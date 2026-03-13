@@ -80,16 +80,14 @@ npm run dev
 
 ### Environment Variables
 
-| Variable                | Where  | Description                                                          |
-| ----------------------- | ------ | -------------------------------------------------------------------- |
-| `MONGODB_URI`           | server | MongoDB connection string                                            |
-| `GOOGLE_AI_API_KEY`     | server | Gemini API key (used if OPENROUTER_API_KEY not set)                  |
-| `GOOGLE_AI_MODEL`       | server | Gemini model name (default: `gemini-2.0-flash`)                      |
-| `OPENROUTER_API_KEY`    | server | OpenRouter API key — takes priority over Gemini                      |
-| `OPENROUTER_MODEL`      | server | OpenRouter model (default: `meta-llama/llama-3.3-70b-instruct:free`) |
-| `GOOGLE_CLIENT_ID`      | server | Google OAuth client ID                                               |
-| `JWT_SECRET`            | server | Secret for signing JWT tokens                                        |
-| `VITE_GOOGLE_CLIENT_ID` | client | Google OAuth client ID (Vite env)                                    |
+| Variable                | Where  | Description                                     |
+| ----------------------- | ------ | ----------------------------------------------- |
+| `MONGODB_URI`           | server | MongoDB connection string                       |
+| `GOOGLE_AI_API_KEY`     | server | Gemini API key                                  |
+| `GOOGLE_AI_MODEL`       | server | Gemini model name (default: `gemini-2.0-flash`) |
+| `GOOGLE_CLIENT_ID`      | server | Google OAuth client ID                          |
+| `JWT_SECRET`            | server | Secret for signing JWT tokens                   |
+| `VITE_GOOGLE_CLIENT_ID` | client | Google OAuth client ID (Vite env)               |
 
 ### Google OAuth Setup
 
