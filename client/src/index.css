@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg: #ffffff;
+    --color-bg-secondary: #fafafa;
+    --color-text: #171717;
+    --color-text-secondary: #525252;
+    --color-text-tertiary: #a3a3a3;
+    --color-border: #e5e5e5;
+    --color-border-light: #f5f5f5;
+  }
+
+  .dark {
+    --color-bg: #0a0a0a;
+    --color-bg-secondary: #171717;
+    --color-text: #fafafa;
+    --color-text-secondary: #a3a3a3;
+    --color-text-tertiary: #525252;
+    --color-border: #262626;
+    --color-border-light: #1a1a1a;
+  }
+
+  * {
+    @apply border-[var(--color-border)];
+  }
+
+  body {
+    @apply bg-[var(--color-bg)] text-[var(--color-text)] font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Custom scrollbar - Apple style */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-300 dark:bg-surface-700 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-surface-400 dark:bg-surface-600;
+  }
+}
+
+@layer components {
+  /* Glass morphism card */
+  .glass-card {
+    @apply bg-white/80 dark:bg-surface-900/80 backdrop-blur-xl border border-white/20 dark:border-surface-800/50 rounded-3xl shadow-soft;
+  }
+
+  /* Apple-style button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-2xl font-medium text-white
+           bg-gradient-to-b from-primary-500 to-primary-600
+           hover:from-primary-600 hover:to-primary-700
+           active:from-primary-700 active:to-primary-800
+           shadow-md hover:shadow-lg active:shadow-sm
+           transition-all duration-200 ease-out
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-2xl font-medium
+           text-surface-700 dark:text-surface-200
+           bg-surface-100 dark:bg-surface-800
+           hover:bg-surface-200 dark:hover:bg-surface-700
+           active:bg-surface-300 dark:active:bg-surface-600
+           transition-all duration-200 ease-out
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-xl font-medium
+           text-surface-600 dark:text-surface-400
+           hover:bg-surface-100 dark:hover:bg-surface-800
+           active:bg-surface-200 dark:active:bg-surface-700
+           transition-all duration-200 ease-out;
+  }
+
+  /* Input field - Apple/Anthropic style */
+  .input-field {
+    @apply w-full px-4 py-3 rounded-2xl
+           bg-surface-50 dark:bg-surface-900
+           border border-surface-200 dark:border-surface-800
+           text-surface-900 dark:text-surface-100
+           placeholder:text-surface-400 dark:placeholder:text-surface-600
+           focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500
+           transition-all duration-200;
+  }
+
+  /* Card styles */
+  .card {
+    @apply bg-white dark:bg-surface-900 rounded-3xl border border-surface-100 dark:border-surface-800 shadow-soft p-6;
+  }
+
+  .card-hover {
+    @apply card hover:shadow-soft-lg hover:border-primary-200 dark:hover:border-primary-800 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+  }
+
+  .badge-primary {
+    @apply badge bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary-600 via-primary-500 to-accent-500 bg-clip-text text-transparent;
+  }
+
+  /* Section padding */
+  .section-padding {
+    @apply px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
