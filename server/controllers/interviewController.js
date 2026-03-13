@@ -1,7 +1,24 @@
-const Interview = require('../models/Interview');
-const Question = require('../models/Question');
-const User = require('../models/User');
-const { generateQuestions, evaluateAnswer, generateInterviewFeedback } = require('../services/aiService');
+const Interview = require("../models/Interview");
+const Question = require("../models/Question");
+const User = require("../models/User");
+const {
+  generateQuestions,
+  evaluateAnswer,
+  generateInterviewFeedback,
+} = require("../services/aiService");
+
+const normalizeQuestionText = (text = "") =>
+  String(text).replace(/\s+/g, " ").trim().toLowerCase();
+
+const uniqueQuestionsByText = (items = []) => {
+  const seen = new Set();
+  return items.filter((q) => {
+    const key = normalizeQuestionText(q?.question);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 // @desc    Start a new interview
 // @route   POST /api/interviews/start
@@ -11,46 +28,110 @@ const startInterview = async (req, res, next) => {
     const userId = req.user._id;
 
     // Check for existing in-progress interview
-    const existing = await Interview.findOne({ user: userId, status: 'in-progress' });
+    const existing = await Interview.findOne({
+      user: userId,
+      status: "in-progress",
+    });
     if (existing) {
       return res.status(400).json({
-        message: 'You have an in-progress interview. Complete or abandon it first.',
+        message:
+          "You have an in-progress interview. Complete or abandon it first.",
         interviewId: existing._id,
       });
     }
 
     // Generate questions (AI or fallback)
     const userContext = req.user.profile
-      ? `Experience: ${req.user.profile.experience}, Skills: ${(req.user.profile.skills || []).join(', ')}, Target Role: ${req.user.profile.targetRole}`
-      : '';
+      ? `Experience: ${req.user.profile.experience}, Skills: ${(req.user.profile.skills || []).join(", ")}, Target Role: ${req.user.profile.targetRole}`
+      : "";
 
     // Support multiple subcategories (comma-separated)
-    const subcategories = (subcategory || 'general').split(',').map(s => s.trim()).filter(Boolean);
-    const effectiveDifficulty = difficulty === 'adaptive' ? 'medium' : difficulty;
+    const subcategories = (subcategory || "general")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const effectiveDifficulty =
+      difficulty === "adaptive" ? "medium" : difficulty;
     const totalCount = questionCount || 10;
 
     let questions = [];
     if (subcategories.length <= 1) {
-      questions = await generateQuestions(category, subcategories[0] || 'general', effectiveDifficulty, totalCount, userContext);
+      questions = await generateQuestions(
+        category,
+        subcategories[0] || "general",
+        effectiveDifficulty,
+        totalCount,
+        userContext,
+      );
     } else {
       const perSub = Math.max(1, Math.floor(totalCount / subcategories.length));
       let remainder = totalCount - perSub * subcategories.length;
       for (const sub of subcategories) {
         const count = perSub + (remainder > 0 ? 1 : 0);
         if (remainder > 0) remainder--;
-        const subQuestions = await generateQuestions(category, sub, effectiveDifficulty, count, userContext);
+        const subQuestions = await generateQuestions(
+          category,
+          sub,
+          effectiveDifficulty,
+          count,
+          userContext,
+        );
         questions.push(...subQuestions);
       }
       // Shuffle so subcategories are mixed
       questions.sort(() => Math.random() - 0.5);
     }
 
-    // Enforce exact count - trim if over, pad with fallback if under
+    // Enforce uniqueness first, then backfill until target count.
+    questions = uniqueQuestionsByText(questions);
+
+    let refillAttempts = 0;
+    while (questions.length < totalCount && refillAttempts < 5) {
+      const needed = totalCount - questions.length;
+      const refillSub =
+        subcategories[refillAttempts % subcategories.length] || "general";
+      const extra = await generateQuestions(
+        category,
+        refillSub,
+        effectiveDifficulty,
+        needed + 3,
+        userContext,
+      );
+      questions = uniqueQuestionsByText([...questions, ...extra]);
+      refillAttempts += 1;
+    }
+
+    // Final top-up from existing DB questions to avoid short sessions.
+    if (questions.length < totalCount) {
+      const existingPool = await Question.find({ category })
+        .select(
+          "question type options correctAnswer sampleAnswer evaluationCriteria hints timeLimit points category subcategory difficulty isAIGenerated",
+        )
+        .sort({ usageCount: 1 })
+        .limit(200)
+        .lean();
+
+      questions = uniqueQuestionsByText([
+        ...questions,
+        ...existingPool.map((q) => ({
+          ...q,
+          category,
+          subcategory: q.subcategory || subcategories[0] || "general",
+          difficulty: q.difficulty || effectiveDifficulty,
+          isAIGenerated: Boolean(q.isAIGenerated),
+        })),
+      ]);
+    }
+
     if (questions.length > totalCount) {
       questions = questions.slice(0, totalCount);
-    } else if (questions.length < totalCount) {
-      const extra = await generateQuestions(category, subcategories[0] || 'general', effectiveDifficulty, totalCount - questions.length, userContext);
-      questions = [...questions, ...extra].slice(0, totalCount);
+    }
+
+    // Strict guarantee: start interview only when we can satisfy exact unique count.
+    if (questions.length < totalCount) {
+      return res.status(503).json({
+        message: `Could not generate ${totalCount} unique questions right now. Please try again.`,
+      });
     }
 
     // Save questions to DB if AI-generated
@@ -66,17 +147,31 @@ const startInterview = async (req, res, next) => {
         savedQ = await Question.findOneAndUpdate(
           { question: q.question, category },
           { ...q, $inc: { usageCount: 1 } },
-          { upsert: true, new: true }
+          { upsert: true, new: true },
         );
       }
       savedQuestions.push(savedQ);
+    }
+
+    // Safety checks: prevent repeated questions and enforce requested count.
+    const uniqueSavedByText = uniqueQuestionsByText(
+      savedQuestions.map((q) => ({ question: q.question })),
+    ).length;
+    if (
+      savedQuestions.length !== totalCount ||
+      uniqueSavedByText !== totalCount
+    ) {
+      return res.status(500).json({
+        message:
+          "Failed to prepare an exact set of unique questions. Please retry.",
+      });
     }
 
     // Create interview
     const interview = await Interview.create({
       user: userId,
       category,
-      subcategory: subcategory || 'general',
+      subcategory: subcategory || "general",
       difficulty,
       totalQuestions: savedQuestions.length,
       maxScore: savedQuestions.length * 10,
@@ -121,30 +216,48 @@ const submitAnswer = async (req, res, next) => {
     const { questionId, answer, timeSpent } = req.body;
     const interviewId = req.params.id;
 
-    const interview = await Interview.findOne({ _id: interviewId, user: req.user._id });
+    const interview = await Interview.findOne({
+      _id: interviewId,
+      user: req.user._id,
+    });
     if (!interview) {
-      return res.status(404).json({ message: 'Interview not found' });
+      return res.status(404).json({ message: "Interview not found" });
     }
-    if (interview.status !== 'in-progress') {
-      return res.status(400).json({ message: 'This interview is no longer active' });
+    if (interview.status !== "in-progress") {
+      return res
+        .status(400)
+        .json({ message: "This interview is no longer active" });
     }
 
     // Find the answer slot
     const answerIndex = interview.answers.findIndex(
-      (a) => a.question.toString() === questionId
+      (a) => a.question.toString() === questionId,
     );
     if (answerIndex === -1) {
-      return res.status(404).json({ message: 'Question not found in this interview' });
+      return res
+        .status(404)
+        .json({ message: "Question not found in this interview" });
     }
 
     // Get question details for evaluation
     const question = await Question.findById(questionId);
     if (!question) {
-      return res.status(404).json({ message: 'Question not found' });
+      return res.status(404).json({ message: "Question not found" });
     }
 
     // Evaluate the answer
-    const evaluation = await evaluateAnswer(question, answer, interview.category);
+    let evaluation;
+    try {
+      evaluation = await evaluateAnswer(question, answer, interview.category);
+    } catch (error) {
+      if (error.name === "AIUnavailableError") {
+        return res.status(503).json({
+          message:
+            "AI evaluation is temporarily unavailable. Please retry submitting your answer in a moment.",
+        });
+      }
+      throw error;
+    }
 
     // Update the answer
     interview.answers[answerIndex].userAnswer = answer;
@@ -156,9 +269,16 @@ const submitAnswer = async (req, res, next) => {
     interview.answers[answerIndex].timeSpent = timeSpent || 0;
     interview.answers[answerIndex].skipped = !answer || !answer.trim();
 
-    interview.questionsAnswered = interview.answers.filter((a) => a.userAnswer || a.skipped).length;
-    interview.totalScore = interview.answers.reduce((sum, a) => sum + a.score, 0);
-    interview.percentage = Math.round((interview.totalScore / interview.maxScore) * 100);
+    interview.questionsAnswered = interview.answers.filter(
+      (a) => a.userAnswer || a.skipped,
+    ).length;
+    interview.totalScore = interview.answers.reduce(
+      (sum, a) => sum + a.score,
+      0,
+    );
+    interview.percentage = Math.round(
+      (interview.totalScore / interview.maxScore) * 100,
+    );
 
     await interview.save();
 
@@ -186,21 +306,33 @@ const submitAnswer = async (req, res, next) => {
 // @route   POST /api/interviews/:id/complete
 const completeInterview = async (req, res, next) => {
   try {
-    const interview = await Interview.findOne({ _id: req.params.id, user: req.user._id });
+    const interview = await Interview.findOne({
+      _id: req.params.id,
+      user: req.user._id,
+    });
     if (!interview) {
-      return res.status(404).json({ message: 'Interview not found' });
+      return res.status(404).json({ message: "Interview not found" });
     }
-    if (interview.status !== 'in-progress') {
-      return res.status(400).json({ message: 'Interview is already completed' });
+    if (interview.status !== "in-progress") {
+      return res
+        .status(400)
+        .json({ message: "Interview is already completed" });
     }
 
     // Calculate final scores
-    interview.totalScore = interview.answers.reduce((sum, a) => sum + a.score, 0);
-    interview.percentage = Math.round((interview.totalScore / interview.maxScore) * 100);
+    interview.totalScore = interview.answers.reduce(
+      (sum, a) => sum + a.score,
+      0,
+    );
+    interview.percentage = Math.round(
+      (interview.totalScore / interview.maxScore) * 100,
+    );
     interview.grade = interview.calculateGrade();
-    interview.status = 'completed';
+    interview.status = "completed";
     interview.completedAt = new Date();
-    interview.duration = Math.round((interview.completedAt - interview.startedAt) / 1000);
+    interview.duration = Math.round(
+      (interview.completedAt - interview.startedAt) / 1000,
+    );
 
     // Generate overall feedback
     const feedback = await generateInterviewFeedback(interview);
@@ -218,15 +350,21 @@ const completeInterview = async (req, res, next) => {
     user.stats.lastActiveDate = new Date();
 
     // Recalculate average score
-    const allInterviews = await Interview.find({ user: req.user._id, status: 'completed' });
+    const allInterviews = await Interview.find({
+      user: req.user._id,
+      status: "completed",
+    });
     const totalPct = allInterviews.reduce((sum, i) => sum + i.percentage, 0);
     user.stats.averageScore = Math.round(totalPct / allInterviews.length);
     user.stats.bestScore = Math.max(user.stats.bestScore, interview.percentage);
 
     // Update category score
-    const categoryInterviews = allInterviews.filter((i) => i.category === interview.category);
+    const categoryInterviews = allInterviews.filter(
+      (i) => i.category === interview.category,
+    );
     const catAvg = Math.round(
-      categoryInterviews.reduce((sum, i) => sum + i.percentage, 0) / categoryInterviews.length
+      categoryInterviews.reduce((sum, i) => sum + i.percentage, 0) /
+        categoryInterviews.length,
     );
     user.stats.categoryScores[interview.category] = catAvg;
 
@@ -242,17 +380,22 @@ const completeInterview = async (req, res, next) => {
 // @route   POST /api/interviews/:id/abandon
 const abandonInterview = async (req, res, next) => {
   try {
-    const interview = await Interview.findOne({ _id: req.params.id, user: req.user._id });
+    const interview = await Interview.findOne({
+      _id: req.params.id,
+      user: req.user._id,
+    });
     if (!interview) {
-      return res.status(404).json({ message: 'Interview not found' });
+      return res.status(404).json({ message: "Interview not found" });
     }
 
-    interview.status = 'abandoned';
+    interview.status = "abandoned";
     interview.completedAt = new Date();
-    interview.duration = Math.round((interview.completedAt - interview.startedAt) / 1000);
+    interview.duration = Math.round(
+      (interview.completedAt - interview.startedAt) / 1000,
+    );
     await interview.save();
 
-    res.json({ message: 'Interview abandoned', interviewId: interview._id });
+    res.json({ message: "Interview abandoned", interviewId: interview._id });
   } catch (error) {
     next(error);
   }
@@ -262,23 +405,27 @@ const abandonInterview = async (req, res, next) => {
 // @route   GET /api/interviews/:id
 const getInterview = async (req, res, next) => {
   try {
-    const interview = await Interview.findOne({ _id: req.params.id, user: req.user._id });
+    const interview = await Interview.findOne({
+      _id: req.params.id,
+      user: req.user._id,
+    });
     if (!interview) {
-      return res.status(404).json({ message: 'Interview not found' });
+      return res.status(404).json({ message: "Interview not found" });
     }
 
     // If interview is in progress, include question details
     let questions = [];
-    if (interview.status === 'in-progress') {
+    if (interview.status === "in-progress") {
       const questionIds = interview.answers.map((a) => a.question);
       const fetched = await Question.find({ _id: { $in: questionIds } }).select(
-        'question type options timeLimit points hints difficulty'
+        "question type options timeLimit points hints difficulty",
       );
-      // Preserve the order defined by interview.answers (MongoDB $in does not guarantee order)
-      const idOrder = questionIds.map((id) => id.toString());
-      questions = fetched.sort(
-        (a, b) => idOrder.indexOf(a._id.toString()) - idOrder.indexOf(b._id.toString())
-      );
+      // Preserve interview order and duplicate references.
+      // A plain $in query returns unique docs only, which can shrink the question list.
+      const byId = new Map(fetched.map((q) => [q._id.toString(), q]));
+      questions = questionIds
+        .map((id) => byId.get(id.toString()))
+        .filter(Boolean);
     }
 
     res.json({ interview, questions });
@@ -302,7 +449,7 @@ const getInterviews = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit))
-      .select('-answers');
+      .select("-answers");
 
     res.json({
       interviews,

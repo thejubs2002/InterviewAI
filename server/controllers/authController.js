@@ -1,6 +1,6 @@
-const User = require('../models/User');
-const { generateToken } = require('../utils/generateToken');
-const { OAuth2Client } = require('google-auth-library');
+const User = require("../models/User");
+const { generateToken } = require("../utils/generateToken");
+const { OAuth2Client } = require("google-auth-library");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -12,7 +12,9 @@ const register = async (req, res, next) => {
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ message: 'An account with this email already exists' });
+      return res
+        .status(400)
+        .json({ message: "An account with this email already exists" });
     }
 
     const user = await User.create({ name, email, password });
@@ -42,18 +44,23 @@ const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email }).select("+password");
     if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    if (user.authProvider === 'google' && !user.password) {
-      return res.status(401).json({ message: 'This account uses Google sign-in. Please use the Google button to log in.' });
+    if (user.authProvider === "google" && !user.password) {
+      return res
+        .status(401)
+        .json({
+          message:
+            "This account uses Google sign-in. Please use the Google button to log in.",
+        });
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
     const token = generateToken(user._id);
@@ -78,11 +85,11 @@ const login = async (req, res, next) => {
 
 // @desc    Google OAuth login/register
 // @route   POST /api/auth/google
-const googleAuth = async (req, res, next) => {
+const googleAuth = async (req, res) => {
   try {
     const { credential } = req.body;
     if (!credential) {
-      return res.status(400).json({ message: 'Google credential is required' });
+      return res.status(400).json({ message: "Google credential is required" });
     }
 
     const ticket = await googleClient.verifyIdToken({
@@ -99,7 +106,7 @@ const googleAuth = async (req, res, next) => {
       // Link Google account if user exists with email but no googleId
       if (!user.googleId) {
         user.googleId = googleId;
-        user.authProvider = 'google';
+        user.authProvider = "google";
         if (picture && !user.avatar) user.avatar = picture;
         await user.save();
       }
@@ -109,8 +116,8 @@ const googleAuth = async (req, res, next) => {
         name,
         email,
         googleId,
-        authProvider: 'google',
-        avatar: picture || '',
+        authProvider: "google",
+        avatar: picture || "",
       });
     }
 
@@ -130,8 +137,8 @@ const googleAuth = async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error('Google Auth Error:', error.message);
-    return res.status(401).json({ message: 'Google authentication failed' });
+    console.error("Google Auth Error:", error.message);
+    return res.status(401).json({ message: "Google authentication failed" });
   }
 };
 

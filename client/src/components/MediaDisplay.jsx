@@ -1,5 +1,5 @@
-import { motion } from 'framer-motion';
-import { Volume2, VolumeX, Mic, MicOff } from 'lucide-react';
+import { motion } from "framer-motion";
+import { Mic, MicOff } from "lucide-react";
 
 export default function MediaDisplay({
   videoRef,
@@ -21,7 +21,7 @@ export default function MediaDisplay({
         playsInline
         muted
         className="w-full h-full object-cover"
-        style={{ transform: 'scaleX(-1)' }}
+        style={{ transform: "scaleX(-1)" }}
       />
 
       {/* Recording Indicator */}
@@ -43,11 +43,7 @@ export default function MediaDisplay({
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}
       >
-        {isMuted ? (
-          <MicOff className="w-5 h-5" />
-        ) : (
-          <Mic className="w-5 h-5" />
-        )}
+        {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
       </motion.button>
 
       {/* No Camera Message */}

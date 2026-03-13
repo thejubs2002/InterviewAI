@@ -1,18 +1,38 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { useAuth } from '../contexts/AuthContext';
-import { analyticsAPI } from '../services/api';
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
+import { useAuth } from "../contexts/AuthContext";
+import { analyticsAPI } from "../services/api";
 import {
-  PlayCircle, Target, Trophy, TrendingUp, Brain,
-  BarChart3, Clock, Flame, ArrowRight, Sparkles,
-} from 'lucide-react';
+  Target,
+  Trophy,
+  TrendingUp,
+  Brain,
+  ArrowRight,
+  Sparkles,
+} from "lucide-react";
 
 const categoryConfig = {
-  aptitude: { color: 'from-indigo-500 to-blue-500', bg: 'bg-indigo-50 dark:bg-indigo-950/30', text: 'text-indigo-600 dark:text-indigo-400' },
-  technical: { color: 'from-violet-500 to-purple-500', bg: 'bg-violet-50 dark:bg-violet-950/30', text: 'text-violet-600 dark:text-violet-400' },
-  hr: { color: 'from-pink-500 to-rose-500', bg: 'bg-pink-50 dark:bg-pink-950/30', text: 'text-pink-600 dark:text-pink-400' },
-  managerial: { color: 'from-amber-500 to-orange-500', bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-600 dark:text-amber-400' },
+  aptitude: {
+    color: "from-indigo-500 to-blue-500",
+    bg: "bg-indigo-50 dark:bg-indigo-950/30",
+    text: "text-indigo-600 dark:text-indigo-400",
+  },
+  technical: {
+    color: "from-violet-500 to-purple-500",
+    bg: "bg-violet-50 dark:bg-violet-950/30",
+    text: "text-violet-600 dark:text-violet-400",
+  },
+  hr: {
+    color: "from-pink-500 to-rose-500",
+    bg: "bg-pink-50 dark:bg-pink-950/30",
+    text: "text-pink-600 dark:text-pink-400",
+  },
+  managerial: {
+    color: "from-amber-500 to-orange-500",
+    bg: "bg-amber-50 dark:bg-amber-950/30",
+    text: "text-amber-600 dark:text-amber-400",
+  },
 };
 
 export default function Dashboard() {
@@ -26,7 +46,7 @@ export default function Dashboard() {
         const { data } = await analyticsAPI.get();
         setAnalytics(data);
       } catch (error) {
-        console.error('Failed to fetch analytics:', error);
+        console.error("Failed to fetch analytics:", error);
       } finally {
         setLoading(false);
       }
@@ -35,10 +55,30 @@ export default function Dashboard() {
   }, []);
 
   const stats = [
-    { label: 'Total Interviews', value: analytics?.overview?.totalInterviews || 0, icon: Target, color: 'text-primary-500' },
-    { label: 'Average Score', value: `${analytics?.overview?.averageScore || 0}%`, icon: TrendingUp, color: 'text-emerald-500' },
-    { label: 'Best Score', value: `${analytics?.overview?.bestScore || 0}%`, icon: Trophy, color: 'text-amber-500' },
-    { label: 'Questions Solved', value: analytics?.overview?.totalQuestions || 0, icon: Brain, color: 'text-blue-500' },
+    {
+      label: "Total Interviews",
+      value: analytics?.overview?.totalInterviews || 0,
+      icon: Target,
+      color: "text-primary-500",
+    },
+    {
+      label: "Average Score",
+      value: `${analytics?.overview?.averageScore || 0}%`,
+      icon: TrendingUp,
+      color: "text-emerald-500",
+    },
+    {
+      label: "Best Score",
+      value: `${analytics?.overview?.bestScore || 0}%`,
+      icon: Trophy,
+      color: "text-amber-500",
+    },
+    {
+      label: "Questions Solved",
+      value: analytics?.overview?.totalQuestions || 0,
+      icon: Brain,
+      color: "text-blue-500",
+    },
   ];
 
   if (loading) {
@@ -58,9 +98,12 @@ export default function Dashboard() {
         transition={{ duration: 0.4 }}
       >
         <h1 className="text-display-sm mb-1">
-          Welcome back, <span className="gradient-text">{user?.name?.split(' ')[0]}</span>
+          Welcome back,{" "}
+          <span className="gradient-text">{user?.name?.split(" ")[0]}</span>
         </h1>
-        <p className="text-[var(--color-text-secondary)]">Ready for your next interview practice session?</p>
+        <p className="text-[var(--color-text-secondary)]">
+          Ready for your next interview practice session?
+        </p>
       </motion.div>
 
       {/* Quick Start */}
@@ -77,10 +120,15 @@ export default function Dashboard() {
             </div>
             <div>
               <h3 className="text-xl font-semibold">Start a Mock Interview</h3>
-              <p className="text-white/80 text-sm mt-1">Choose from aptitude, technical, HR, or managerial categories</p>
+              <p className="text-white/80 text-sm mt-1">
+                Choose from aptitude, technical, HR, or managerial categories
+              </p>
             </div>
           </div>
-          <Link to="/interview/setup" className="btn-secondary bg-white text-primary-700 hover:bg-white/90 dark:bg-white dark:text-primary-700 shrink-0">
+          <Link
+            to="/interview/setup"
+            className="btn-secondary bg-white text-primary-700 hover:bg-white/90 dark:bg-white dark:text-primary-700 shrink-0"
+          >
             Begin Now <ArrowRight className="w-4 h-4 ml-2" />
           </Link>
         </div>
@@ -121,13 +169,21 @@ export default function Dashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 + i * 0.05, duration: 0.4 }}
               >
-                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${config.color} flex items-center justify-center mb-4`}>
-                  <span className="text-white font-bold text-lg">{cat.charAt(0).toUpperCase()}</span>
+                <div
+                  className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${config.color} flex items-center justify-center mb-4`}
+                >
+                  <span className="text-white font-bold text-lg">
+                    {cat.charAt(0).toUpperCase()}
+                  </span>
                 </div>
                 <h3 className="font-semibold capitalize mb-1">{cat}</h3>
                 <div className="flex items-baseline gap-2 mb-3">
-                  <span className="text-2xl font-bold">{catData.averageScore || 0}%</span>
-                  <span className="text-xs text-[var(--color-text-tertiary)]">avg score</span>
+                  <span className="text-2xl font-bold">
+                    {catData.averageScore || 0}%
+                  </span>
+                  <span className="text-xs text-[var(--color-text-tertiary)]">
+                    avg score
+                  </span>
                 </div>
                 <div className="w-full bg-surface-100 dark:bg-surface-800 rounded-full h-2">
                   <div
@@ -149,35 +205,54 @@ export default function Dashboard() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-heading">Recent Activity</h2>
-            <Link to="/history" className="btn-ghost text-sm text-primary-600 dark:text-primary-400">
+            <Link
+              to="/history"
+              className="btn-ghost text-sm text-primary-600 dark:text-primary-400"
+            >
               View All <ArrowRight className="w-4 h-4 ml-1" />
             </Link>
           </div>
           <div className="card overflow-hidden p-0">
             <div className="divide-y divide-surface-100 dark:divide-surface-800">
               {analytics.recentPerformance.slice(0, 5).map((item) => {
-                const config = categoryConfig[item.category] || categoryConfig.technical;
+                const config =
+                  categoryConfig[item.category] || categoryConfig.technical;
                 return (
                   <Link
                     key={item._id}
                     to={`/interview/${item._id}/result`}
                     className="flex items-center gap-4 p-4 hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors"
                   >
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${config.color} flex items-center justify-center shrink-0`}>
-                      <span className="text-white font-bold text-sm">{item.category.charAt(0).toUpperCase()}</span>
+                    <div
+                      className={`w-10 h-10 rounded-xl bg-gradient-to-br ${config.color} flex items-center justify-center shrink-0`}
+                    >
+                      <span className="text-white font-bold text-sm">
+                        {item.category.charAt(0).toUpperCase()}
+                      </span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium capitalize truncate">{item.category} Interview</p>
+                      <p className="font-medium capitalize truncate">
+                        {item.category} Interview
+                      </p>
                       <p className="text-xs text-[var(--color-text-tertiary)]">
-                        {new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {new Date(item.date).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="font-semibold">{item.percentage}%</p>
-                      <p className={`text-xs font-medium ${
-                        item.percentage >= 80 ? 'text-emerald-500' :
-                        item.percentage >= 60 ? 'text-amber-500' : 'text-red-500'
-                      }`}>
+                      <p
+                        className={`text-xs font-medium ${
+                          item.percentage >= 80
+                            ? "text-emerald-500"
+                            : item.percentage >= 60
+                              ? "text-amber-500"
+                              : "text-red-500"
+                        }`}
+                      >
                         Grade {item.grade}
                       </p>
                     </div>

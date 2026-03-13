@@ -8,6 +8,14 @@ const getGeminiModel = () => {
   return genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const createAIUnavailableError = (message) => {
+  const err = new Error(message);
+  err.name = "AIUnavailableError";
+  return err;
+};
+
 const CATEGORY_PROMPTS = {
   aptitude: {
     system: `You are an expert aptitude test interviewer. Generate challenging but fair aptitude questions covering logical reasoning, quantitative aptitude, verbal ability, and data interpretation. Always provide clear, unambiguous questions.`,
@@ -20,7 +28,7 @@ const CATEGORY_PROMPTS = {
     ],
   },
   technical: {
-    system: `You are a senior technical interviewer at a top tech company. Generate technical interview questions covering data structures, algorithms, system design, and programming concepts. Tailor difficulty appropriately.`,
+    system: `You are a senior technical interviewer at a top tech company. Generate technical interview questions for a live face-to-face interview. Questions must be verbally answerable and discussion-oriented (concept explanation, trade-offs, debugging approach, architecture choices). Do not ask candidates to write code, implement functions, type syntax, or provide long written solutions. Tailor difficulty appropriately.`,
     subcategories: [
       "dsa",
       "system-design",
@@ -63,6 +71,138 @@ const DIFFICULTY_CONTEXT = {
   hard: "Senior level, suitable for experienced candidates with 3+ years.",
 };
 
+const TECHNICAL_FACE_TO_FACE_RULES = `
+For technical category, follow these strict rules:
+- Ask only face-to-face, verbally answerable questions.
+- Prefer prompts like "Explain...", "How would you approach...", "What trade-offs...", "Walk me through...".
+- Do NOT ask to write/implement code, pseudocode, SQL queries, regex, or exact syntax.
+- Keep each question suitable for a spoken 1-3 minute response.
+- Focus on reasoning, architecture, debugging approach, and decision making.
+`;
+
+const STOPWORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "to",
+  "of",
+  "in",
+  "on",
+  "for",
+  "with",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "this",
+  "that",
+  "it",
+  "as",
+  "by",
+  "at",
+  "from",
+  "your",
+  "you",
+  "i",
+]);
+
+const tokenize = (text = "") =>
+  String(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+
+const unique = (arr = []) => [...new Set(arr)];
+
+const extractExpectedKeywords = (question) => {
+  const pool = [
+    question?.correctAnswer || "",
+    question?.sampleAnswer || "",
+    Array.isArray(question?.evaluationCriteria)
+      ? question.evaluationCriteria.join(" ")
+      : "",
+  ].join(" ");
+  return unique(tokenize(pool)).slice(0, 12);
+};
+
+const pickQuestionTopic = (question) => {
+  const q = String(question?.question || question?.questionText || "").trim();
+  if (!q) return "this question";
+  const plain = q.replace(/\s+/g, " ");
+  return plain.length > 90 ? `${plain.slice(0, 90)}...` : plain;
+};
+
+const buildQuestionSpecificFeedback = (question, userAnswer, score) => {
+  const answerTokens = new Set(tokenize(userAnswer));
+  const expected = extractExpectedKeywords(question);
+  const covered = expected.filter((k) => answerTokens.has(k));
+  const missing = expected.filter((k) => !answerTokens.has(k));
+  const topic = pickQuestionTopic(question);
+
+  let opener = "";
+  if (score >= 8) opener = `Good response for the question: \"${topic}\".`;
+  else if (score >= 6)
+    opener = `Decent attempt for the question: \"${topic}\".`;
+  else
+    opener = `Your answer only partially addressed the question: \"${topic}\".`;
+
+  const coveredLine = covered.length
+    ? `You covered relevant points such as ${covered.slice(0, 3).join(", ")}.`
+    : "You should focus more on the core concept asked in the question.";
+
+  const improveLine = missing.length
+    ? `To improve, include points around ${missing.slice(0, 3).join(", ")} in your response.`
+    : "To improve, add a clearer structure: key point, reasoning, and one practical example.";
+
+  return `${opener} ${coveredLine} ${improveLine}`;
+};
+
+const isGenericFeedback = (text = "") => {
+  const t = String(text).toLowerCase();
+  if (!t.trim()) return true;
+  return (
+    /good start|strong response|basic response|answer has been recorded|well done|needs improvement/.test(
+      t,
+    ) && !/question|because|for this|in this/.test(t)
+  );
+};
+
+const normalizeEvaluationResult = (result, question, userAnswer) => {
+  const fallback = generateFallbackEvaluation(question, userAnswer);
+  const scoreValue = Number(result?.score);
+  const score = Number.isFinite(scoreValue)
+    ? Math.max(0, Math.min(10, Math.round(scoreValue)))
+    : fallback.score;
+
+  let feedback =
+    typeof result?.feedback === "string" && result.feedback.trim()
+      ? result.feedback.trim()
+      : fallback.feedback;
+
+  if (isGenericFeedback(feedback)) {
+    feedback = buildQuestionSpecificFeedback(question, userAnswer, score);
+  }
+
+  return {
+    score,
+    isCorrect:
+      typeof result?.isCorrect === "boolean" ? result.isCorrect : score >= 5,
+    feedback,
+    strengths:
+      Array.isArray(result?.strengths) && result.strengths.length
+        ? result.strengths.filter((s) => typeof s === "string" && s.trim())
+        : fallback.strengths,
+    improvements:
+      Array.isArray(result?.improvements) && result.improvements.length
+        ? result.improvements.filter((s) => typeof s === "string" && s.trim())
+        : fallback.improvements,
+  };
+};
+
 /**
  * Generate AI-powered interview questions
  */
@@ -89,6 +229,7 @@ const generateQuestions = async (
 
 Difficulty Context: ${difficultyDesc}
 ${userContext ? `Candidate Context: ${userContext}` : ""}
+  ${category === "technical" ? TECHNICAL_FACE_TO_FACE_RULES : ""}
 
 Return a JSON array with this exact structure for each question:
 {
@@ -106,7 +247,12 @@ Return a JSON array with this exact structure for each question:
 Return ONLY the JSON array, no markdown or other text.`;
 
     const response = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: `${categoryConfig.system}\n\n${prompt}` }] }],
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: `${categoryConfig.system}\n\n${prompt}` }],
+        },
+      ],
       generationConfig: { temperature: 0.8, maxOutputTokens: 4000 },
     });
 
@@ -127,7 +273,12 @@ Return ONLY the JSON array, no markdown or other text.`;
     if (mapped.length >= count) {
       return mapped.slice(0, count);
     }
-    const fallbackExtra = generateFallbackQuestions(category, subcategory, difficulty, count - mapped.length);
+    const fallbackExtra = generateFallbackQuestions(
+      category,
+      subcategory,
+      difficulty,
+      count - mapped.length,
+    );
     return [...mapped, ...fallbackExtra].slice(0, count);
   } catch (error) {
     console.error("AI Question Generation Error:", error.message);
@@ -141,12 +292,22 @@ Return ONLY the JSON array, no markdown or other text.`;
 const evaluateAnswer = async (question, userAnswer, category) => {
   const model = getGeminiModel();
 
-  if (!model || !userAnswer.trim()) {
+  if (!userAnswer.trim()) {
     return generateFallbackEvaluation(question, userAnswer);
   }
 
-  try {
-    const prompt = `Evaluate this ${category} interview answer.
+  if (!model) {
+    throw createAIUnavailableError(
+      "AI evaluation is unavailable because GOOGLE_AI_API_KEY is not configured.",
+    );
+  }
+
+  const maxAttempts = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const prompt = `Evaluate this ${category} interview answer.
 
 Question: ${question.question || question.questionText}
 ${question.correctAnswer ? `Expected Answer: ${question.correctAnswer}` : ""}
@@ -159,27 +320,48 @@ Evaluate and return a JSON object:
 {
   "score": <number 0-10>,
   "isCorrect": <boolean>,
-  "feedback": "Detailed constructive feedback",
+  "feedback": "Detailed constructive feedback that explicitly references this specific question/topic and what the candidate covered or missed",
   "strengths": ["strength 1", "strength 2"],
   "improvements": ["area for improvement 1", "area for improvement 2"]
 }
 
 Return ONLY the JSON object.`;
 
-    const response = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: `You are a fair and constructive interview evaluator. Provide helpful, specific feedback.\n\n${prompt}` }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 1000 },
-    });
+      const response = await model.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `You are a fair and constructive interview evaluator. Feedback must be question-specific, never generic. Mention at least one concrete concept from the question, and identify what was covered vs missing in the candidate answer.\n\n${prompt}`,
+              },
+            ],
+          },
+        ],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 1000 },
+      });
 
-    const content = response.response.text().trim();
-    const jsonStr = content
-      .replace(/^```(?:json)?\n?/, "")
-      .replace(/\n?```$/, "");
-    return JSON.parse(jsonStr);
-  } catch (error) {
-    console.error("AI Evaluation Error:", error.message);
-    return generateFallbackEvaluation(question, userAnswer);
+      const content = response.response.text().trim();
+      const jsonStr = content
+        .replace(/^```(?:json)?\n?/, "")
+        .replace(/\n?```$/, "");
+      const parsed = JSON.parse(jsonStr);
+      return normalizeEvaluationResult(parsed, question, userAnswer);
+    } catch (error) {
+      lastError = error;
+      console.error(
+        `AI Evaluation Error (attempt ${attempt}/${maxAttempts}):`,
+        error.message,
+      );
+      if (attempt < maxAttempts) {
+        await sleep(350 * attempt);
+      }
+    }
   }
+
+  throw createAIUnavailableError(
+    `AI evaluation is temporarily unavailable. Please retry. (${lastError?.message || "unknown error"})`,
+  );
 };
 
 /**
@@ -220,7 +402,16 @@ Return a JSON object:
 Return ONLY the JSON object.`;
 
     const response = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: `You are a career coach providing constructive interview feedback.\n\n${prompt}` }] }],
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `You are a career coach providing constructive interview feedback.\n\n${prompt}`,
+            },
+          ],
+        },
+      ],
       generationConfig: { temperature: 0.5, maxOutputTokens: 1000 },
     });
 
@@ -524,16 +715,16 @@ function generateFallbackQuestions(category, subcategory, difficulty, count) {
       },
       {
         question:
-          "Implement a function to check if a string is a valid palindrome (considering only alphanumeric characters).",
+          "How would you explain your approach to checking whether a string is a palindrome while ignoring non-alphanumeric characters?",
         type: "open-ended",
         correctAnswer:
-          "Use two pointers from start and end, skip non-alphanumeric, compare characters",
+          "Describe a two-pointer approach: normalize or skip non-alphanumeric characters, compare from both ends, and stop on mismatch.",
         sampleAnswer:
-          'function isPalindrome(s) { const cleaned = s.toLowerCase().replace(/[^a-z0-9]/g, ""); let left = 0, right = cleaned.length - 1; while (left < right) { if (cleaned[left] !== cleaned[right]) return false; left++; right--; } return true; } Time: O(n), Space: O(n) or O(1) with in-place two pointers.',
+          "I would use two pointers, one at the start and one at the end. At each step, skip characters that are not letters or digits, compare lowercased characters, and move inward. If any pair differs, it is not a palindrome. If pointers cross, it is a palindrome. This runs in O(n) time and O(1) extra space if done in-place.",
         evaluationCriteria: [
-          "Correct algorithm",
+          "Clear verbal approach",
           "Edge cases handled",
-          "Time/space complexity",
+          "Time/space complexity awareness",
         ],
         timeLimit: 300,
         points: 10,
@@ -880,20 +1071,65 @@ function generateFallbackEvaluation(question, userAnswer) {
   }
 
   // Basic scoring for open-ended (without AI)
-  const wordCount = userAnswer.trim().split(/\s+/).length;
-  let score = Math.min(7, Math.floor(wordCount / 10) + 3);
-  if (wordCount < 10) score = 3;
-  if (wordCount > 50) score = Math.min(8, score + 1);
+  const trimmed = userAnswer.trim();
+  const wordCount = trimmed.split(/\s+/).length;
+  const sentenceCount = (trimmed.match(/[.!?]+/g) || []).length;
+  const hasExampleCue =
+    /\b(example|for instance|for example|in my|when i|project|experience)\b/i.test(
+      trimmed,
+    );
+
+  let score = 4;
+  if (wordCount >= 15) score += 1;
+  if (wordCount >= 30) score += 1;
+  if (sentenceCount >= 2) score += 1;
+  if (hasExampleCue) score += 1;
+  score = Math.max(1, Math.min(10, score));
+
+  const strengths = [];
+  const improvements = [];
+
+  if (wordCount >= 20)
+    strengths.push("You provided a reasonably detailed response.");
+  if (sentenceCount >= 2)
+    strengths.push("Your answer has a clear multi-point structure.");
+  if (hasExampleCue)
+    strengths.push(
+      "You attempted to ground your response with context/examples.",
+    );
+
+  if (wordCount < 20)
+    improvements.push(
+      "Add more depth: explain your thinking in 2-3 clear points.",
+    );
+  if (!hasExampleCue)
+    improvements.push(
+      "Include one specific example from your project/work/college experience.",
+    );
+  if (sentenceCount < 2)
+    improvements.push(
+      "Structure your response into short sentences for better clarity.",
+    );
+
+  const feedback =
+    score >= 8
+      ? "Strong response. You communicated clearly and covered the topic with good depth."
+      : score >= 6
+        ? "Good start. Your answer is understandable, but adding a specific example and clearer structure would make it stronger."
+        : "Basic response. Expand your answer with relevant details and a concrete example to improve your interview impact.";
+
+  const specificFeedback = buildQuestionSpecificFeedback(
+    question,
+    userAnswer,
+    score,
+  );
 
   return {
     score,
     isCorrect: score >= 5,
-    feedback: `Your answer has been recorded. For detailed AI-powered feedback, please configure your Google AI API key. Based on response length and structure, score: ${score}/10.`,
-    strengths: wordCount > 20 ? ["Provided a detailed response"] : [],
-    improvements:
-      wordCount < 20
-        ? ["Try to provide more detailed answers with specific examples"]
-        : [],
+    feedback: `${specificFeedback} ${feedback} (Score: ${score}/10)`,
+    strengths,
+    improvements,
   };
 }
 

@@ -2,15 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { interviewAPI, questionAPI } from "../services/api";
-import {
-  Brain,
-  Code,
-  Users,
-  Briefcase,
-  ArrowRight,
-  Zap,
-  ChevronDown,
-} from "lucide-react";
+import { Brain, Code, Users, Briefcase, Zap } from "lucide-react";
 import toast from "react-hot-toast";
 
 const categoryCards = [
@@ -61,7 +53,9 @@ export default function InterviewSetup() {
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("");
-  const [selectedSubcategories, setSelectedSubcategories] = useState(["general"]);
+  const [selectedSubcategories, setSelectedSubcategories] = useState([
+    "general",
+  ]);
   const [difficulty, setDifficulty] = useState("medium");
   const [questionCount, setQuestionCount] = useState(10);
   const [loading, setLoading] = useState(false);
@@ -89,12 +83,12 @@ export default function InterviewSetup() {
     try {
       const { data } = await interviewAPI.start({
         category: selectedCategory,
-        subcategory: selectedSubcategories.join(','),
+        subcategory: selectedSubcategories.join(","),
         difficulty,
         questionCount,
       });
       // Navigate to media permissions before starting interview
-      navigate('/media-permissions', {
+      navigate("/media-permissions", {
         state: { interviewId: data.interview._id },
       });
     } catch (error) {
@@ -160,18 +154,23 @@ export default function InterviewSetup() {
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: "auto" }}
         >
-          <h2 className="text-lg font-semibold mb-4">Focus Area <span className="text-sm font-normal text-[var(--color-text-tertiary)]">(select multiple)</span></h2>
+          <h2 className="text-lg font-semibold mb-4">
+            Focus Area{" "}
+            <span className="text-sm font-normal text-[var(--color-text-tertiary)]">
+              (select multiple)
+            </span>
+          </h2>
           <div className="flex flex-wrap gap-2">
             {selectedCatData.subcategories.map((sub) => (
               <button
                 key={sub}
                 onClick={() => {
                   setSelectedSubcategories((prev) => {
-                    if (sub === 'general') return ['general'];
-                    const without = prev.filter((s) => s !== 'general');
+                    if (sub === "general") return ["general"];
+                    const without = prev.filter((s) => s !== "general");
                     if (prev.includes(sub)) {
                       const next = without.filter((s) => s !== sub);
-                      return next.length === 0 ? ['general'] : next;
+                      return next.length === 0 ? ["general"] : next;
                     }
                     return [...without, sub];
                   });

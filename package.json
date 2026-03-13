@@ -10,7 +10,9 @@
     "dev:client": "cd client && npm run dev",
     "build": "cd client && npm run build",
     "start": "cd server && npm start",
-    "seed": "cd server && npm run seed"
+    "seed": "cd server && npm run seed",
+    "lint": "cd server && npm run lint && cd ../client && npm run lint",
+    "lint:fix": "cd server && npm run lint:fix && cd ../client && npm run lint:fix"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

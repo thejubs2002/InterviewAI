@@ -50,7 +50,7 @@ export default function Settings() {
       });
       updateUser(data.user);
       toast.success("Preferences saved");
-    } catch (error) {
+    } catch {
       toast.error("Failed to save preferences");
     } finally {
       setSavingPrefs(false);
@@ -73,7 +73,7 @@ export default function Settings() {
       logout();
       navigate("/");
       toast.success("Account deleted");
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete account");
     }
   };
@@ -145,50 +145,52 @@ export default function Settings() {
       </div>
 
       {/* Change Password - only for local auth users */}
-      {user?.authProvider !== 'google' && (
-      <div className="card space-y-4">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Lock className="w-5 h-5" /> Change Password
-        </h3>
-        <div>
-          <label className="block text-sm font-medium mb-2">
-            Current Password
-          </label>
-          <input
-            type="password"
-            value={passwords.currentPassword}
-            onChange={(e) =>
-              setPasswords({ ...passwords, currentPassword: e.target.value })
+      {user?.authProvider !== "google" && (
+        <div className="card space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Lock className="w-5 h-5" /> Change Password
+          </h3>
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Current Password
+            </label>
+            <input
+              type="password"
+              value={passwords.currentPassword}
+              onChange={(e) =>
+                setPasswords({ ...passwords, currentPassword: e.target.value })
+              }
+              className="input-field"
+              autoComplete="current-password"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              New Password
+            </label>
+            <input
+              type="password"
+              value={passwords.newPassword}
+              onChange={(e) =>
+                setPasswords({ ...passwords, newPassword: e.target.value })
+              }
+              className="input-field"
+              placeholder="At least 8 characters"
+              autoComplete="new-password"
+            />
+          </div>
+          <button
+            onClick={handlePasswordChange}
+            disabled={
+              changingPassword ||
+              !passwords.currentPassword ||
+              !passwords.newPassword
             }
-            className="input-field"
-            autoComplete="current-password"
-          />
+            className="btn-primary text-sm"
+          >
+            {changingPassword ? "Changing..." : "Change Password"}
+          </button>
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-2">New Password</label>
-          <input
-            type="password"
-            value={passwords.newPassword}
-            onChange={(e) =>
-              setPasswords({ ...passwords, newPassword: e.target.value })
-            }
-            className="input-field"
-            placeholder="At least 8 characters"
-            autoComplete="new-password"
-          />
-        </div>
-        <button
-          onClick={handlePasswordChange}
-          disabled={
-            changingPassword ||
-            !passwords.currentPassword ||
-            !passwords.newPassword
-          }
-          className="btn-primary text-sm"
-        >
-          {changingPassword ? "Changing..." : "Change Password"}
-        </button>
-      </div>
       )}
 
       {/* Danger Zone */}

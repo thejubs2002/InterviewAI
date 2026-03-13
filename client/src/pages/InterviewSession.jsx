@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { interviewAPI } from "../services/api";
 import { useMedia } from "../contexts/MediaContext";
@@ -11,7 +11,6 @@ import {
   Send,
   SkipForward,
   CheckCircle,
-  AlertTriangle,
   Lightbulb,
   XCircle,
   Flag,
@@ -23,7 +22,6 @@ import toast from "react-hot-toast";
 export default function InterviewSession() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
   const textareaRef = useRef(null);
   const videoRef = useRef(null);
 
@@ -43,7 +41,8 @@ export default function InterviewSession() {
   const autoCompletedRef = useRef(false);
 
   // Shared media stream from context (established in MediaPermissions page)
-  const { mediaStream, permissionsGranted, requestPermissions, stopStream } = useMedia();
+  const { mediaStream, permissionsGranted, requestPermissions, stopStream } =
+    useMedia();
   const {
     isListening,
     transcript,
@@ -90,7 +89,7 @@ export default function InterviewSession() {
           (a) => !a.userAnswer && !a.skipped,
         );
         if (firstUnanswered > 0) setCurrentIndex(firstUnanswered);
-      } catch (error) {
+      } catch {
         toast.error("Failed to load interview");
         navigate("/dashboard", { replace: true });
       } finally {
@@ -100,10 +99,24 @@ export default function InterviewSession() {
     fetchInterview();
   }, [id, navigate]);
 
+  const handleComplete = useCallback(async () => {
+    setCompleting(true);
+    try {
+      await interviewAPI.complete(id);
+      toast.success("Interview completed!");
+      navigate(`/interview/${id}/result`);
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "Failed to complete interview",
+      );
+    } finally {
+      setCompleting(false);
+    }
+  }, [id, navigate]);
+
   // Overall interview timer
   useEffect(() => {
-    if (totalTimeLeft <= 0 || !interview || interview.status !== "in-progress")
-      return;
+    if (!interview || interview.status !== "in-progress") return;
 
     const timer = setInterval(() => {
       setTotalTimeLeft((prev) => {
@@ -131,7 +144,7 @@ export default function InterviewSession() {
       autoCompletedRef.current = true;
       handleComplete();
     }
-  }, [totalTimeLeft, interview, completing]);
+  }, [totalTimeLeft, interview, completing, handleComplete]);
 
   // Focus textarea on question change
   useEffect(() => {
@@ -150,7 +163,9 @@ export default function InterviewSession() {
 
   // Cleanup on unmount: stop speech recognition and camera/mic stream
   const stopStreamRef = useRef(stopStream);
-  useEffect(() => { stopStreamRef.current = stopStream; }, [stopStream]);
+  useEffect(() => {
+    stopStreamRef.current = stopStream;
+  }, [stopStream]);
   useEffect(() => {
     return () => {
       stopListening();
@@ -202,8 +217,7 @@ export default function InterviewSession() {
       return;
     }
     // Capture existing answer text so we can prefix it with new speech
-    preSpeechAnswerRef.current =
-      answer || answers[currentQuestion?._id] || "";
+    preSpeechAnswerRef.current = answer || answers[currentQuestion?._id] || "";
     resetTranscript();
     startListening();
   };
@@ -294,21 +308,6 @@ export default function InterviewSession() {
       stopListening();
       resetTranscript();
       setShowHints(false);
-    }
-  };
-
-  const handleComplete = async () => {
-    setCompleting(true);
-    try {
-      await interviewAPI.complete(id);
-      toast.success("Interview completed!");
-      navigate(`/interview/${id}/result`);
-    } catch (error) {
-      toast.error(
-        error.response?.data?.message || "Failed to complete interview",
-      );
-    } finally {
-      setCompleting(false);
     }
   };
 
@@ -404,7 +403,10 @@ export default function InterviewSession() {
             <p className="text-xs font-semibold mb-2 text-[var(--color-text-secondary)] uppercase tracking-wide">
               You
             </p>
-            <div className="relative bg-black rounded-2xl overflow-hidden border border-surface-700 shadow-lg" style={{ aspectRatio: "4/3" }}>
+            <div
+              className="relative bg-black rounded-2xl overflow-hidden border border-surface-700 shadow-lg"
+              style={{ aspectRatio: "4/3" }}
+            >
               <video
                 ref={videoCallbackRef}
                 autoPlay
@@ -447,168 +449,168 @@ export default function InterviewSession() {
 
         {/* Question Card */}
         <AnimatePresence mode="wait">
-        <motion.div
-          key={currentIndex}
-          className="card flex-1"
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.3 }}
-        >
-          {/* Difficulty badge */}
-          <div className="flex items-center gap-2 mb-4">
-            <span
-              className={`badge ${
-                currentQuestion.difficulty === "easy"
-                  ? "bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600"
-                  : currentQuestion.difficulty === "hard"
-                    ? "bg-red-100 dark:bg-red-950/30 text-red-600"
-                    : "bg-amber-100 dark:bg-amber-950/30 text-amber-600"
-              }`}
-            >
-              {currentQuestion.difficulty}
-            </span>
-            <span className="text-xs text-[var(--color-text-tertiary)]">
-              {currentQuestion.points} points
-            </span>
-          </div>
+          <motion.div
+            key={currentIndex}
+            className="card flex-1"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            {/* Difficulty badge */}
+            <div className="flex items-center gap-2 mb-4">
+              <span
+                className={`badge ${
+                  currentQuestion.difficulty === "easy"
+                    ? "bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600"
+                    : currentQuestion.difficulty === "hard"
+                      ? "bg-red-100 dark:bg-red-950/30 text-red-600"
+                      : "bg-amber-100 dark:bg-amber-950/30 text-amber-600"
+                }`}
+              >
+                {currentQuestion.difficulty}
+              </span>
+              <span className="text-xs text-[var(--color-text-tertiary)]">
+                {currentQuestion.points} points
+              </span>
+            </div>
 
-          {/* Question text */}
-          <h2 className="text-xl font-semibold leading-relaxed mb-6">
-            {currentQuestion.question}
-          </h2>
+            {/* Question text */}
+            <h2 className="text-xl font-semibold leading-relaxed mb-6">
+              {currentQuestion.question}
+            </h2>
 
-          {/* MCQ Options */}
-          {currentQuestion.type === "mcq" &&
-            currentQuestion.options?.length > 0 && (
-              <div className="space-y-3 mb-6">
-                {currentQuestion.options.map((opt) => (
-                  <button
-                    key={opt.label}
-                    onClick={() => setAnswer(opt.label)}
-                    disabled={!!hasEvaluation}
-                    className={`w-full text-left p-4 rounded-2xl border transition-all duration-200 ${
-                      answer === opt.label ||
-                      answers[currentQuestion._id] === opt.label
-                        ? "border-primary-500 bg-primary-50 dark:bg-primary-950/30 ring-1 ring-primary-500"
-                        : "border-surface-200 dark:border-surface-700 hover:border-surface-300 dark:hover:border-surface-600"
-                    } ${hasEvaluation ? "cursor-default" : ""}`}
+            {/* MCQ Options */}
+            {currentQuestion.type === "mcq" &&
+              currentQuestion.options?.length > 0 && (
+                <div className="space-y-3 mb-6">
+                  {currentQuestion.options.map((opt) => (
+                    <button
+                      key={opt.label}
+                      onClick={() => setAnswer(opt.label)}
+                      disabled={!!hasEvaluation}
+                      className={`w-full text-left p-4 rounded-2xl border transition-all duration-200 ${
+                        answer === opt.label ||
+                        answers[currentQuestion._id] === opt.label
+                          ? "border-primary-500 bg-primary-50 dark:bg-primary-950/30 ring-1 ring-primary-500"
+                          : "border-surface-200 dark:border-surface-700 hover:border-surface-300 dark:hover:border-surface-600"
+                      } ${hasEvaluation ? "cursor-default" : ""}`}
+                    >
+                      <span className="font-semibold mr-3">{opt.label}.</span>
+                      {opt.text}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+            {/* Open-ended answer with Speech-to-Text */}
+            {currentQuestion.type !== "mcq" && (
+              <>
+                <textarea
+                  ref={textareaRef}
+                  value={answer || answers[currentQuestion._id] || ""}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  disabled={!!hasEvaluation}
+                  placeholder="Type your answer here or use the microphone button to speak..."
+                  className="input-field min-h-[160px] resize-y mb-4"
+                  rows={6}
+                />
+
+                {/* Speech-to-Text Interim Display */}
+                {(isListening || interimTranscript) && (
+                  <motion.div
+                    className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-800"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
                   >
-                    <span className="font-semibold mr-3">{opt.label}.</span>
-                    {opt.text}
-                  </button>
-                ))}
+                    <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-1">
+                      {isListening ? "Listening..." : "Interim text:"}
+                    </p>
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      {interimTranscript || "Processing audio..."}
+                    </p>
+                  </motion.div>
+                )}
+
+                {/* Speech Controls */}
+                {!hasEvaluation && isSupported && (
+                  <div className="flex gap-2 mb-4">
+                    {!isListening ? (
+                      <button
+                        onClick={handleStartSpeech}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors"
+                      >
+                        <Mic className="w-4 h-4" />
+                        Start Speaking
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleStopSpeech}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-colors animate-pulse"
+                      >
+                        <MicOff className="w-4 h-4" />
+                        Stop Listening
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Hints */}
+            {currentQuestion.hints?.length > 0 && !hasEvaluation && (
+              <div className="mb-4">
+                <button
+                  onClick={() => setShowHints(!showHints)}
+                  className="btn-ghost text-sm text-amber-600 dark:text-amber-400"
+                >
+                  <Lightbulb className="w-4 h-4 mr-1" />
+                  {showHints ? "Hide Hints" : "Show Hints"}
+                </button>
+                {showHints && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="mt-2 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 text-sm text-amber-800 dark:text-amber-200"
+                  >
+                    {currentQuestion.hints.map((hint, i) => (
+                      <p key={i}>💡 {hint}</p>
+                    ))}
+                  </motion.div>
+                )}
               </div>
             )}
 
-          {/* Open-ended answer with Speech-to-Text */}
-          {currentQuestion.type !== "mcq" && (
-            <>
-              <textarea
-                ref={textareaRef}
-                value={answer || answers[currentQuestion._id] || ""}
-                onChange={(e) => setAnswer(e.target.value)}
-                disabled={!!hasEvaluation}
-                placeholder="Type your answer here or use the microphone button to speak..."
-                className="input-field min-h-[160px] resize-y mb-4"
-                rows={6}
-              />
-
-              {/* Speech-to-Text Interim Display */}
-              {(isListening || interimTranscript) && (
-                <motion.div
-                  className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-800"
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                >
-                  <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-1">
-                    {isListening ? "Listening..." : "Interim text:"}
-                  </p>
-                  <p className="text-sm text-blue-800 dark:text-blue-200">
-                    {interimTranscript || "Processing audio..."}
-                  </p>
-                </motion.div>
-              )}
-
-              {/* Speech Controls */}
-              {!hasEvaluation && isSupported && (
-                <div className="flex gap-2 mb-4">
-                  {!isListening ? (
-                    <button
-                      onClick={handleStartSpeech}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors"
-                    >
-                      <Mic className="w-4 h-4" />
-                      Start Speaking
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleStopSpeech}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-colors animate-pulse"
-                    >
-                      <MicOff className="w-4 h-4" />
-                      Stop Listening
-                    </button>
-                  )}
+            {/* Action buttons */}
+            {!hasEvaluation || (isAptitude && hasEvaluation) ? (
+              !hasEvaluation ? (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleSubmitAnswer}
+                    disabled={
+                      submitting || (!answer && !answers[currentQuestion._id])
+                    }
+                    className="btn-primary"
+                  >
+                    {submitting ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" /> Submit Answer
+                      </>
+                    )}
+                  </button>
+                  <button onClick={handleSkip} className="btn-ghost text-sm">
+                    <SkipForward className="w-4 h-4 mr-1" /> Skip
+                  </button>
                 </div>
-              )}
-            </>
-          )}
-
-          {/* Hints */}
-          {currentQuestion.hints?.length > 0 && !hasEvaluation && (
-            <div className="mb-4">
-              <button
-                onClick={() => setShowHints(!showHints)}
-                className="btn-ghost text-sm text-amber-600 dark:text-amber-400"
-              >
-                <Lightbulb className="w-4 h-4 mr-1" />
-                {showHints ? "Hide Hints" : "Show Hints"}
-              </button>
-              {showHints && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  className="mt-2 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 text-sm text-amber-800 dark:text-amber-200"
-                >
-                  {currentQuestion.hints.map((hint, i) => (
-                    <p key={i}>💡 {hint}</p>
-                  ))}
-                </motion.div>
-              )}
-            </div>
-          )}
-
-          {/* Action buttons */}
-          {!hasEvaluation || (isAptitude && hasEvaluation) ? (
-            !hasEvaluation ? (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleSubmitAnswer}
-                  disabled={
-                    submitting || (!answer && !answers[currentQuestion._id])
-                  }
-                  className="btn-primary"
-                >
-                  {submitting ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 mr-2" /> Submit Answer
-                    </>
-                  )}
-                </button>
-                <button onClick={handleSkip} className="btn-ghost text-sm">
-                  <SkipForward className="w-4 h-4 mr-1" /> Skip
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
-                <CheckCircle className="w-4 h-4" /> Answer submitted
-              </div>
-            )
-          ) : null}
-        </motion.div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle className="w-4 h-4" /> Answer submitted
+                </div>
+              )
+            ) : null}
+          </motion.div>
         </AnimatePresence>
       </div>
 

@@ -1,16 +1,31 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { interviewAPI } from '../services/api';
+import { useState, useEffect } from "react";
+import { useParams, Link } from "react-router-dom";
+import { motion } from "framer-motion";
+import { interviewAPI } from "../services/api";
 import {
-  Trophy, Target, Clock, ArrowLeft, ArrowRight,
-  CheckCircle, XCircle, ChevronDown, ChevronUp, BarChart3,
-  TrendingUp, AlertTriangle,
-} from 'lucide-react';
+  Trophy,
+  Target,
+  Clock,
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle,
+  XCircle,
+  ChevronDown,
+  ChevronUp,
+  BarChart3,
+  TrendingUp,
+  AlertTriangle,
+} from "lucide-react";
 
 const gradeColors = {
-  'A+': 'text-emerald-500', A: 'text-emerald-500', 'B+': 'text-blue-500', B: 'text-blue-500',
-  'C+': 'text-amber-500', C: 'text-amber-500', D: 'text-orange-500', F: 'text-red-500',
+  "A+": "text-emerald-500",
+  A: "text-emerald-500",
+  "B+": "text-blue-500",
+  B: "text-blue-500",
+  "C+": "text-amber-500",
+  C: "text-amber-500",
+  D: "text-orange-500",
+  F: "text-red-500",
 };
 
 export default function InterviewResult() {
@@ -25,7 +40,7 @@ export default function InterviewResult() {
         const { data } = await interviewAPI.getById(id);
         setInterview(data.interview);
       } catch (error) {
-        console.error('Failed to load result:', error);
+        console.error("Failed to load result:", error);
       } finally {
         setLoading(false);
       }
@@ -45,7 +60,9 @@ export default function InterviewResult() {
     return (
       <div className="text-center py-20">
         <p className="text-[var(--color-text-secondary)]">Result not found.</p>
-        <Link to="/dashboard" className="btn-primary mt-4 inline-flex">Go to Dashboard</Link>
+        <Link to="/dashboard" className="btn-primary mt-4 inline-flex">
+          Go to Dashboard
+        </Link>
       </div>
     );
   }
@@ -59,12 +76,17 @@ export default function InterviewResult() {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
         <Link to="/history" className="btn-ghost text-sm mb-4 inline-flex">
           <ArrowLeft className="w-4 h-4 mr-1" /> Back to History
         </Link>
         <h1 className="text-display-sm">Interview Result</h1>
-        <p className="text-[var(--color-text-secondary)] capitalize">{interview.category} Interview — {interview.subcategory}</p>
+        <p className="text-[var(--color-text-secondary)] capitalize">
+          {interview.category} Interview — {interview.subcategory}
+        </p>
       </motion.div>
 
       {/* Score Card */}
@@ -75,10 +97,14 @@ export default function InterviewResult() {
         transition={{ delay: 0.1 }}
       >
         <div className="mb-6">
-          <div className={`text-7xl font-bold ${gradeColors[interview.grade] || 'text-surface-500'}`}>
-            {interview.grade || '-'}
+          <div
+            className={`text-7xl font-bold ${gradeColors[interview.grade] || "text-surface-500"}`}
+          >
+            {interview.grade || "-"}
           </div>
-          <p className="text-[var(--color-text-tertiary)] text-sm mt-2">Grade</p>
+          <p className="text-[var(--color-text-tertiary)] text-sm mt-2">
+            Grade
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-8">
@@ -87,37 +113,52 @@ export default function InterviewResult() {
               <Target className="w-5 h-5 text-primary-500" />
               {interview.percentage}%
             </div>
-            <p className="text-xs text-[var(--color-text-tertiary)] mt-1">Score</p>
+            <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+              Score
+            </p>
           </div>
           <div className="text-center">
             <div className="flex items-center gap-2 justify-center text-2xl font-bold">
               <Trophy className="w-5 h-5 text-amber-500" />
               {interview.totalScore}/{interview.maxScore}
             </div>
-            <p className="text-xs text-[var(--color-text-tertiary)] mt-1">Points</p>
+            <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+              Points
+            </p>
           </div>
           <div className="text-center">
             <div className="flex items-center gap-2 justify-center text-2xl font-bold">
               <BarChart3 className="w-5 h-5 text-blue-500" />
               {interview.questionsAnswered}/{interview.totalQuestions}
             </div>
-            <p className="text-xs text-[var(--color-text-tertiary)] mt-1">Answered</p>
+            <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+              Answered
+            </p>
           </div>
           <div className="text-center">
             <div className="flex items-center gap-2 justify-center text-2xl font-bold">
               <Clock className="w-5 h-5 text-surface-400" />
               {formatDuration(interview.duration || 0)}
             </div>
-            <p className="text-xs text-[var(--color-text-tertiary)] mt-1">Duration</p>
+            <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
+              Duration
+            </p>
           </div>
         </div>
       </motion.div>
 
       {/* Overall Feedback */}
       {interview.overallFeedback && (
-        <motion.div className="card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+        <motion.div
+          className="card"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
           <h2 className="text-lg font-semibold mb-3">Overall Feedback</h2>
-          <p className="text-[var(--color-text-secondary)] leading-relaxed">{interview.overallFeedback}</p>
+          <p className="text-[var(--color-text-secondary)] leading-relaxed">
+            {interview.overallFeedback}
+          </p>
 
           <div className="grid sm:grid-cols-2 gap-6 mt-6">
             {interview.strengths?.length > 0 && (
@@ -126,7 +167,9 @@ export default function InterviewResult() {
                   <TrendingUp className="w-4 h-4" /> Strengths
                 </h3>
                 <ul className="space-y-1 text-sm text-[var(--color-text-secondary)]">
-                  {interview.strengths.map((s, i) => <li key={i}>✓ {s}</li>)}
+                  {interview.strengths.map((s, i) => (
+                    <li key={i}>✓ {s}</li>
+                  ))}
                 </ul>
               </div>
             )}
@@ -136,7 +179,9 @@ export default function InterviewResult() {
                   <AlertTriangle className="w-4 h-4" /> Areas to Improve
                 </h3>
                 <ul className="space-y-1 text-sm text-[var(--color-text-secondary)]">
-                  {interview.areasForImprovement.map((s, i) => <li key={i}>→ {s}</li>)}
+                  {interview.areasForImprovement.map((s, i) => (
+                    <li key={i}>→ {s}</li>
+                  ))}
                 </ul>
               </div>
             )}
@@ -144,9 +189,13 @@ export default function InterviewResult() {
 
           {interview.recommendations?.length > 0 && (
             <div className="mt-6 p-4 rounded-2xl bg-primary-50 dark:bg-primary-950/20">
-              <h3 className="text-sm font-semibold text-primary-600 dark:text-primary-400 mb-2">Recommendations</h3>
+              <h3 className="text-sm font-semibold text-primary-600 dark:text-primary-400 mb-2">
+                Recommendations
+              </h3>
               <ul className="space-y-1 text-sm text-[var(--color-text-secondary)]">
-                {interview.recommendations.map((r, i) => <li key={i}>💡 {r}</li>)}
+                {interview.recommendations.map((r, i) => (
+                  <li key={i}>💡 {r}</li>
+                ))}
               </ul>
             </div>
           )}
@@ -166,15 +215,22 @@ export default function InterviewResult() {
               transition={{ delay: 0.05 * i }}
             >
               <button
-                onClick={() => setExpandedAnswer(expandedAnswer === i ? null : i)}
+                onClick={() =>
+                  setExpandedAnswer(expandedAnswer === i ? null : i)
+                }
                 className="w-full flex items-center gap-4 p-4 text-left hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors"
               >
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                  ans.skipped ? 'bg-surface-100 dark:bg-surface-800' :
-                  ans.score >= 7 ? 'bg-emerald-100 dark:bg-emerald-950/30' :
-                  ans.score >= 4 ? 'bg-amber-100 dark:bg-amber-950/30' :
-                  'bg-red-100 dark:bg-red-950/30'
-                }`}>
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    ans.skipped
+                      ? "bg-surface-100 dark:bg-surface-800"
+                      : ans.score >= 7
+                        ? "bg-emerald-100 dark:bg-emerald-950/30"
+                        : ans.score >= 4
+                          ? "bg-amber-100 dark:bg-amber-950/30"
+                          : "bg-red-100 dark:bg-red-950/30"
+                  }`}
+                >
                   {ans.skipped ? (
                     <span className="text-xs text-surface-400">—</span>
                   ) : ans.score >= 7 ? (
@@ -184,48 +240,73 @@ export default function InterviewResult() {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">Q{i + 1}: {ans.questionText}</p>
+                  <p className="text-sm font-medium truncate">
+                    Q{i + 1}: {ans.questionText}
+                  </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="font-semibold text-sm">{ans.score}/10</span>
-                  {expandedAnswer === i ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  {expandedAnswer === i ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
                 </div>
               </button>
 
               {expandedAnswer === i && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
+                  animate={{ height: "auto", opacity: 1 }}
                   className="border-t border-surface-100 dark:border-surface-800 p-4 bg-surface-50/50 dark:bg-surface-800/30"
                 >
                   {ans.userAnswer && (
                     <div className="mb-3">
-                      <p className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">Your Answer</p>
+                      <p className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">
+                        Your Answer
+                      </p>
                       <p className="text-sm">{ans.userAnswer}</p>
                     </div>
                   )}
-                  {ans.feedback && (
-                    <div className="mb-3">
-                      <p className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">Feedback</p>
-                      <p className="text-sm text-[var(--color-text-secondary)]">{ans.feedback}</p>
-                    </div>
-                  )}
+                  <div className="mb-3">
+                    <p className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">
+                      Feedback
+                    </p>
+                    <p className="text-sm text-[var(--color-text-secondary)]">
+                      {ans.feedback?.trim() ||
+                        "Feedback unavailable for this response."}
+                    </p>
+                  </div>
                   {ans.strengths?.length > 0 && (
                     <div className="mb-2">
-                      <p className="text-xs font-medium text-emerald-600 mb-1">Strengths</p>
+                      <p className="text-xs font-medium text-emerald-600 mb-1">
+                        Strengths
+                      </p>
                       <div className="flex flex-wrap gap-1">
                         {ans.strengths.map((s, j) => (
-                          <span key={j} className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300">{s}</span>
+                          <span
+                            key={j}
+                            className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300"
+                          >
+                            {s}
+                          </span>
                         ))}
                       </div>
                     </div>
                   )}
                   {ans.improvements?.length > 0 && (
                     <div>
-                      <p className="text-xs font-medium text-amber-600 mb-1">Improvements</p>
+                      <p className="text-xs font-medium text-amber-600 mb-1">
+                        Improvements
+                      </p>
                       <div className="flex flex-wrap gap-1">
                         {ans.improvements.map((s, j) => (
-                          <span key={j} className="px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300">{s}</span>
+                          <span
+                            key={j}
+                            className="px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300"
+                          >
+                            {s}
+                          </span>
                         ))}
                       </div>
                     </div>
