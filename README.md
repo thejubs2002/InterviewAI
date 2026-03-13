@@ -13,7 +13,7 @@ A production-ready, full-stack MERN application for AI-powered mock interview pr
 
 ### AI-Powered Experience
 
-- Real-time question generation powered by **Google Gemini 2.0 Flash**
+- Real-time question generation powered by **Google Gemini** (configurable model)
 - Intelligent answer evaluation with detailed per-question feedback (shown on results page)
 - Exact question count enforcement — always delivers exactly the number you select
 - Fallback question banks ensure interviews work even without an AI API key
@@ -39,15 +39,15 @@ A production-ready, full-stack MERN application for AI-powered mock interview pr
 
 ## 🛠 Tech Stack
 
-| Layer      | Technology                                              |
-| ---------- | ------------------------------------------------------- |
-| Frontend   | React 18, Vite, Tailwind CSS, Framer Motion, Recharts  |
-| Backend    | Node.js, Express.js                                     |
-| Database   | MongoDB Atlas with Mongoose                             |
-| AI         | Google Gemini API (`gemini-2.0-flash`)                 |
-| Auth       | Google OAuth 2.0 (`@react-oauth/google`), JWT           |
-| Media      | Web Speech API, `navigator.mediaDevices.getUserMedia`  |
-| Design     | Apple + Anthropic inspired minimal dark/light UI        |
+| Layer    | Technology                                                        |
+| -------- | ----------------------------------------------------------------- |
+| Frontend | React 18, Vite, Tailwind CSS, Framer Motion, Recharts             |
+| Backend  | Node.js, Express.js                                               |
+| Database | MongoDB Atlas with Mongoose                                       |
+| AI       | Google Gemini API (`GOOGLE_AI_MODEL`, default `gemini-2.0-flash`) |
+| Auth     | Google OAuth 2.0 (`@react-oauth/google`), JWT                     |
+| Media    | Web Speech API, `navigator.mediaDevices.getUserMedia`             |
+| Design   | Apple + Anthropic inspired minimal dark/light UI                  |
 
 ## 🚀 Quick Start
 
@@ -69,7 +69,7 @@ npm run install:all
 
 # Setup environment variables
 cp .env.example .env
-# Fill in: MONGODB_URI, GOOGLE_AI_API_KEY, GOOGLE_CLIENT_ID, JWT_SECRET, VITE_GOOGLE_CLIENT_ID
+# Fill in: MONGODB_URI, GOOGLE_AI_API_KEY, GOOGLE_AI_MODEL, GOOGLE_CLIENT_ID, JWT_SECRET, VITE_GOOGLE_CLIENT_ID
 
 # Seed the database with sample questions
 npm run seed
@@ -80,13 +80,16 @@ npm run dev
 
 ### Environment Variables
 
-| Variable              | Where      | Description                               |
-| --------------------- | ---------- | ----------------------------------------- |
-| `MONGODB_URI`         | server     | MongoDB connection string                 |
-| `GOOGLE_AI_API_KEY`   | server     | Gemini API key                            |
-| `GOOGLE_CLIENT_ID`    | server     | Google OAuth client ID                    |
-| `JWT_SECRET`          | server     | Secret for signing JWT tokens             |
-| `VITE_GOOGLE_CLIENT_ID` | client   | Google OAuth client ID (Vite env)         |
+| Variable                | Where  | Description                                                          |
+| ----------------------- | ------ | -------------------------------------------------------------------- |
+| `MONGODB_URI`           | server | MongoDB connection string                                            |
+| `GOOGLE_AI_API_KEY`     | server | Gemini API key (used if OPENROUTER_API_KEY not set)                  |
+| `GOOGLE_AI_MODEL`       | server | Gemini model name (default: `gemini-2.0-flash`)                      |
+| `OPENROUTER_API_KEY`    | server | OpenRouter API key — takes priority over Gemini                      |
+| `OPENROUTER_MODEL`      | server | OpenRouter model (default: `meta-llama/llama-3.3-70b-instruct:free`) |
+| `GOOGLE_CLIENT_ID`      | server | Google OAuth client ID                                               |
+| `JWT_SECRET`            | server | Secret for signing JWT tokens                                        |
+| `VITE_GOOGLE_CLIENT_ID` | client | Google OAuth client ID (Vite env)                                    |
 
 ### Google OAuth Setup
 
@@ -169,11 +172,11 @@ InterviewSetup → MediaPermissions → InterviewSession → InterviewResult
 
 ## 🌐 Browser Support
 
-| Feature          | Chrome | Edge | Safari | Firefox         |
-| ---------------- | ------ | ---- | ------ | --------------- |
-| Webcam/Mic       | ✅     | ✅   | ✅     | ✅              |
-| Speech-to-Text   | ✅     | ✅   | ✅     | ⚠️ Limited     |
-| Full UI          | ✅     | ✅   | ✅     | ✅              |
+| Feature        | Chrome | Edge | Safari | Firefox    |
+| -------------- | ------ | ---- | ------ | ---------- |
+| Webcam/Mic     | ✅     | ✅   | ✅     | ✅         |
+| Speech-to-Text | ✅     | ✅   | ✅     | ⚠️ Limited |
+| Full UI        | ✅     | ✅   | ✅     | ✅         |
 
 > Speech-to-text uses the Web Speech API. Chrome and Edge provide the best experience.
 

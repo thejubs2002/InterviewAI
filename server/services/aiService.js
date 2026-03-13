@@ -1,12 +1,83 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
+const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash";
+
+const getGeminiModelName = () => {
+  const configured = (process.env.GOOGLE_AI_MODEL || "").trim();
+  return configured || DEFAULT_GEMINI_MODEL;
+};
+
 const getGeminiModel = () => {
   if (!process.env.GOOGLE_AI_API_KEY) {
     return null;
   }
   const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
-  return genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  return genAI.getGenerativeModel({ model: getGeminiModelName() });
 };
+
+// ====================== OPENROUTER (OpenAI-compatible) ======================
+const getOpenRouterClient = () => {
+  if (!process.env.OPENROUTER_API_KEY) return null;
+  try {
+    const { OpenAI } = require("openai");
+    return new OpenAI({
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseURL: "https://openrouter.ai/api/v1",
+      defaultHeaders: {
+        "HTTP-Referer": "https://interviewai-back.onrender.com",
+        "X-Title": "InterviewAI",
+      },
+    });
+  } catch {
+    return null;
+  }
+};
+
+const getOpenRouterModelName = () =>
+  (
+    process.env.OPENROUTER_MODEL || "meta-llama/llama-3.3-70b-instruct:free"
+  ).trim();
+
+const isAIAvailable = () =>
+  Boolean(process.env.OPENROUTER_API_KEY || process.env.GOOGLE_AI_API_KEY);
+
+/**
+ * Unified AI text call — tries OpenRouter first, falls back to Gemini.
+ * Returns response text string, or null if no provider is configured.
+ */
+const callAI = async (
+  systemPrompt,
+  userPrompt,
+  { temperature = 0.5, maxTokens = 1000 } = {},
+) => {
+  const orClient = getOpenRouterClient();
+  if (orClient) {
+    const resp = await orClient.chat.completions.create({
+      model: getOpenRouterModelName(),
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature,
+      max_tokens: maxTokens,
+    });
+    return resp.choices[0].message.content.trim();
+  }
+
+  const geminiModel = getGeminiModel();
+  if (!geminiModel) return null;
+  const resp = await geminiModel.generateContent({
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
+      },
+    ],
+    generationConfig: { temperature, maxOutputTokens: maxTokens },
+  });
+  return resp.response.text().trim();
+};
+// ============================================================================
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -213,10 +284,7 @@ const generateQuestions = async (
   count,
   userContext = "",
 ) => {
-  const model = getGeminiModel();
-
-  // Fallback to preset questions if no API key
-  if (!model) {
+  if (!isAIAvailable()) {
     return generateFallbackQuestions(category, subcategory, difficulty, count);
   }
 
@@ -246,17 +314,17 @@ Return a JSON array with this exact structure for each question:
 
 Return ONLY the JSON array, no markdown or other text.`;
 
-    const response = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: `${categoryConfig.system}\n\n${prompt}` }],
-        },
-      ],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 4000 },
+    const content = await callAI(categoryConfig.system, prompt, {
+      temperature: 0.8,
+      maxTokens: 4000,
     });
-
-    const content = response.response.text().trim();
+    if (!content)
+      return generateFallbackQuestions(
+        category,
+        subcategory,
+        difficulty,
+        count,
+      );
     // Strip markdown code fences if present
     const jsonStr = content
       .replace(/^```(?:json)?\n?/, "")
@@ -290,15 +358,13 @@ Return ONLY the JSON array, no markdown or other text.`;
  * Evaluate user's answer using AI
  */
 const evaluateAnswer = async (question, userAnswer, category) => {
-  const model = getGeminiModel();
-
   if (!userAnswer.trim()) {
     return generateFallbackEvaluation(question, userAnswer);
   }
 
-  if (!model) {
+  if (!isAIAvailable()) {
     throw createAIUnavailableError(
-      "AI evaluation is unavailable because GOOGLE_AI_API_KEY is not configured.",
+      "AI evaluation is unavailable because no AI provider is configured.",
     );
   }
 
@@ -327,21 +393,12 @@ Evaluate and return a JSON object:
 
 Return ONLY the JSON object.`;
 
-      const response = await model.generateContent({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `You are a fair and constructive interview evaluator. Feedback must be question-specific, never generic. Mention at least one concrete concept from the question, and identify what was covered vs missing in the candidate answer.\n\n${prompt}`,
-              },
-            ],
-          },
-        ],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 1000 },
-      });
-
-      const content = response.response.text().trim();
+      const content = await callAI(
+        "You are a fair and constructive interview evaluator. Feedback must be question-specific, never generic. Mention at least one concrete concept from the question, and identify what was covered vs missing in the candidate answer.",
+        prompt,
+        { temperature: 0.3, maxTokens: 1000 },
+      );
+      if (!content) throw new Error("Empty AI response");
       const jsonStr = content
         .replace(/^```(?:json)?\n?/, "")
         .replace(/\n?```$/, "");
@@ -368,9 +425,7 @@ Return ONLY the JSON object.`;
  * Generate overall interview feedback using AI
  */
 const generateInterviewFeedback = async (interview) => {
-  const model = getGeminiModel();
-
-  if (!model) {
+  if (!isAIAvailable()) {
     return generateFallbackFeedback(interview);
   }
 
@@ -401,21 +456,12 @@ Return a JSON object:
 
 Return ONLY the JSON object.`;
 
-    const response = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `You are a career coach providing constructive interview feedback.\n\n${prompt}`,
-            },
-          ],
-        },
-      ],
-      generationConfig: { temperature: 0.5, maxOutputTokens: 1000 },
-    });
-
-    const content = response.response.text().trim();
+    const content = await callAI(
+      "You are a career coach providing constructive interview feedback.",
+      prompt,
+      { temperature: 0.5, maxTokens: 1000 },
+    );
+    if (!content) return generateFallbackFeedback(interview);
     const jsonStr = content
       .replace(/^```(?:json)?\n?/, "")
       .replace(/\n?```$/, "");
