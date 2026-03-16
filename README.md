@@ -69,7 +69,7 @@ npm run install:all
 
 # Setup environment variables
 cp .env.example .env
-# Fill in: MONGODB_URI, GOOGLE_AI_API_KEY, GOOGLE_AI_MODEL, GOOGLE_CLIENT_ID, JWT_SECRET, VITE_GOOGLE_CLIENT_ID
+# Fill in: MONGODB_URI, GOOGLE_AI_API_KEY, GOOGLE_AI_MODEL, GOOGLE_AI_MODELS, GOOGLE_CLIENT_ID, JWT_SECRET, VITE_GOOGLE_CLIENT_ID
 
 # Seed the database with sample questions
 npm run seed
@@ -80,14 +80,15 @@ npm run dev
 
 ### Environment Variables
 
-| Variable                | Where  | Description                                     |
-| ----------------------- | ------ | ----------------------------------------------- |
-| `MONGODB_URI`           | server | MongoDB connection string                       |
-| `GOOGLE_AI_API_KEY`     | server | Gemini API key                                  |
-| `GOOGLE_AI_MODEL`       | server | Gemini model name (default: `gemini-2.0-flash`) |
-| `GOOGLE_CLIENT_ID`      | server | Google OAuth client ID                          |
-| `JWT_SECRET`            | server | Secret for signing JWT tokens                   |
-| `VITE_GOOGLE_CLIENT_ID` | client | Google OAuth client ID (Vite env)               |
+| Variable                | Where  | Description                                      |
+| ----------------------- | ------ | ------------------------------------------------ |
+| `MONGODB_URI`           | server | MongoDB connection string                        |
+| `GOOGLE_AI_API_KEY`     | server | Gemini API key                                   |
+| `GOOGLE_AI_MODEL`       | server | Gemini model name (default: `gemini-2.0-flash`)  |
+| `GOOGLE_AI_MODELS`      | server | Comma-separated model list for rotation/failover |
+| `GOOGLE_CLIENT_ID`      | server | Google OAuth client ID                           |
+| `JWT_SECRET`            | server | Secret for signing JWT tokens                    |
+| `VITE_GOOGLE_CLIENT_ID` | client | Google OAuth client ID (Vite env)                |
 
 ### Google OAuth Setup
 

@@ -1,18 +1,150 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash";
+const DEFAULT_GEMINI_MODELS = [
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.5-flash",
+];
+const DISABLED_GEMINI_MODELS = new Set([
+  // Avoid known-invalid model id for current generateContent usage.
+  "gemini-1.5-flash",
+]);
+
+let modelRotationIndex = 0;
 
 const getGeminiModelName = () => {
   const configured = (process.env.GOOGLE_AI_MODEL || "").trim();
   return configured || DEFAULT_GEMINI_MODEL;
 };
 
-const getGeminiModel = () => {
+const unique = (arr = []) => [...new Set(arr)];
+
+const sanitizeGeminiModelList = (names = []) =>
+  names.filter((name) => name && !DISABLED_GEMINI_MODELS.has(name));
+
+const getGeminiModelNames = () => {
+  const single = getGeminiModelName();
+  const configuredList = sanitizeGeminiModelList(
+    String(process.env.GOOGLE_AI_MODELS || "")
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean),
+  );
+
+  // Priority: explicit list -> single model -> sensible defaults.
+  const ordered = unique([
+    ...configuredList,
+    ...sanitizeGeminiModelList([single]),
+    ...sanitizeGeminiModelList(DEFAULT_GEMINI_MODELS),
+  ]);
+
+  return ordered.length ? ordered : [...DEFAULT_GEMINI_MODELS];
+};
+
+const getGeminiClient = () => {
   if (!process.env.GOOGLE_AI_API_KEY) {
     return null;
   }
-  const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
-  return genAI.getGenerativeModel({ model: getGeminiModelName() });
+  return new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
+};
+
+const hasGeminiApiKey = () =>
+  Boolean((process.env.GOOGLE_AI_API_KEY || "").trim());
+
+const getRotatedModelOrder = (names) => {
+  if (!names.length) return [];
+  const start = modelRotationIndex % names.length;
+  modelRotationIndex = (modelRotationIndex + 1) % names.length;
+  return [...names.slice(start), ...names.slice(0, start)];
+};
+
+const generateWithGeminiModels = async (promptText, generationConfig) => {
+  const client = getGeminiClient();
+  if (!client) {
+    return null;
+  }
+
+  const modelNames = getGeminiModelNames();
+  const orderedModels = getRotatedModelOrder(modelNames);
+  let lastError;
+
+  for (const modelName of orderedModels) {
+    try {
+      const model = client.getGenerativeModel({ model: modelName });
+      const response = await model.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: promptText }],
+          },
+        ],
+        generationConfig,
+      });
+      return response.response.text().trim();
+    } catch (error) {
+      lastError = error;
+      console.error(`Gemini model ${modelName} failed:`, error.message);
+    }
+  }
+
+  throw createAIUnavailableError(
+    `All configured Gemini models failed. (${lastError?.message || "unknown error"})`,
+  );
+};
+
+const generateWithAI = async (promptText, generationConfig = {}) => {
+  if (!hasGeminiApiKey()) {
+    return null;
+  }
+
+  return generateWithGeminiModels(promptText, generationConfig);
+};
+
+const stripMarkdownCodeFences = (text = "") => {
+  const trimmed = String(text).trim();
+  return trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+};
+
+const extractJsonCandidate = (text = "", expectedType = "object") => {
+  const direct = stripMarkdownCodeFences(text);
+  if (!direct) return "";
+
+  if (expectedType === "array") {
+    const start = direct.indexOf("[");
+    const end = direct.lastIndexOf("]");
+    if (start !== -1 && end !== -1 && end > start) {
+      return direct.slice(start, end + 1).trim();
+    }
+  } else {
+    const start = direct.indexOf("{");
+    const end = direct.lastIndexOf("}");
+    if (start !== -1 && end !== -1 && end > start) {
+      return direct.slice(start, end + 1).trim();
+    }
+  }
+
+  return direct;
+};
+
+const parseAIJsonResponse = (content, expectedType = "object") => {
+  const candidate = extractJsonCandidate(content, expectedType);
+  if (!candidate) {
+    throw new Error("AI returned empty content.");
+  }
+
+  const parsed = JSON.parse(candidate);
+  if (expectedType === "array" && !Array.isArray(parsed)) {
+    throw new Error("AI response is not a JSON array.");
+  }
+  if (expectedType === "object" && (Array.isArray(parsed) || parsed === null)) {
+    throw new Error("AI response is not a JSON object.");
+  }
+
+  return parsed;
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -21,6 +153,26 @@ const createAIUnavailableError = (message) => {
   const err = new Error(message);
   err.name = "AIUnavailableError";
   return err;
+};
+
+const isQuotaOrRateLimitError = (error) => {
+  const msg = String(error?.message || "").toLowerCase();
+  return (
+    msg.includes("429") ||
+    msg.includes("too many requests") ||
+    msg.includes("quota exceeded") ||
+    msg.includes("rate limit")
+  );
+};
+
+const isUnsupportedModelError = (error) => {
+  const msg = String(error?.message || "").toLowerCase();
+  return (
+    msg.includes("404") ||
+    msg.includes("not found for api version") ||
+    msg.includes("not supported for generatecontent") ||
+    msg.includes("model is not found")
+  );
 };
 
 const CATEGORY_PROMPTS = {
@@ -123,8 +275,6 @@ const tokenize = (text = "") =>
     .split(/\s+/)
     .filter((w) => w.length > 2 && !STOPWORDS.has(w));
 
-const unique = (arr = []) => [...new Set(arr)];
-
 const extractExpectedKeywords = (question) => {
   const pool = [
     question?.correctAnswer || "",
@@ -134,6 +284,32 @@ const extractExpectedKeywords = (question) => {
       : "",
   ].join(" ");
   return unique(tokenize(pool)).slice(0, 12);
+};
+
+const toCleanList = (items) =>
+  (Array.isArray(items) ? items : [])
+    .filter((s) => typeof s === "string" && s.trim())
+    .map((s) => s.trim());
+
+const dedupePhrases = (items, limit = 4) => {
+  const seen = new Set();
+  const output = [];
+  for (const item of items) {
+    const key = item.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(item);
+    if (output.length >= limit) break;
+  }
+  return output;
+};
+
+const analyzeCoverage = (question, userAnswer) => {
+  const answerTokens = new Set(tokenize(userAnswer));
+  const expected = extractExpectedKeywords(question);
+  const covered = expected.filter((k) => answerTokens.has(k));
+  const missing = expected.filter((k) => !answerTokens.has(k));
+  return { expected, covered, missing };
 };
 
 const pickQuestionTopic = (question) => {
@@ -178,6 +354,47 @@ const isGenericFeedback = (text = "") => {
   );
 };
 
+const hasReasonedExplanation = (text = "") =>
+  /because|since|therefore|covered|missing|for this question|you explained|you did not address|criterion|trade-?off|example/.test(
+    String(text).toLowerCase(),
+  );
+
+const buildExplainableFeedback = (
+  question,
+  userAnswer,
+  score,
+  baseFeedback = "",
+) => {
+  const topic = pickQuestionTopic(question);
+  const { covered, missing } = analyzeCoverage(question, userAnswer);
+
+  const assessment =
+    score >= 8
+      ? "Strong answer overall."
+      : score >= 6
+        ? "Reasonable answer with room to improve."
+        : "The answer is partially correct and needs more depth.";
+
+  const coveredLine = covered.length
+    ? `What you covered: ${covered.slice(0, 3).join(", ")}.`
+    : "What you covered: limited direct match to expected key concepts.";
+
+  const missingLine = missing.length
+    ? `What is missing: ${missing.slice(0, 3).join(", ")}.`
+    : "What is missing: add stronger structure (claim, reason, example).";
+
+  const nextStep = missing.length
+    ? `Next step: briefly explain ${missing[0]} with one concrete example.`
+    : "Next step: tighten your answer with one concrete example and a clear conclusion.";
+
+  const aiLine =
+    baseFeedback && !isGenericFeedback(baseFeedback)
+      ? `Evaluator note: ${baseFeedback}`
+      : "";
+
+  return `Question focus: "${topic}". ${assessment} ${coveredLine} ${missingLine} ${nextStep}${aiLine ? ` ${aiLine}` : ""}`;
+};
+
 const normalizeEvaluationResult = (result, question, userAnswer) => {
   const fallback = generateFallbackEvaluation(question, userAnswer);
   const scoreValue = Number(result?.score);
@@ -190,23 +407,37 @@ const normalizeEvaluationResult = (result, question, userAnswer) => {
       ? result.feedback.trim()
       : fallback.feedback;
 
-  if (isGenericFeedback(feedback)) {
-    feedback = buildQuestionSpecificFeedback(question, userAnswer, score);
+  if (isGenericFeedback(feedback) || !hasReasonedExplanation(feedback)) {
+    feedback = buildExplainableFeedback(question, userAnswer, score, feedback);
   }
+
+  const coverage = analyzeCoverage(question, userAnswer);
+
+  const strengths = dedupePhrases([
+    ...toCleanList(result?.strengths),
+    ...toCleanList(fallback.strengths),
+    ...(coverage.covered.length
+      ? [`Covered key concepts: ${coverage.covered.slice(0, 2).join(", ")}`]
+      : []),
+  ]);
+
+  const improvements = dedupePhrases([
+    ...toCleanList(result?.improvements),
+    ...toCleanList(fallback.improvements),
+    ...(coverage.missing.length
+      ? [
+          `Address missing concept(s): ${coverage.missing.slice(0, 2).join(", ")}`,
+        ]
+      : ["Use a clearer structure: key point, reasoning, example."]),
+  ]);
 
   return {
     score,
     isCorrect:
       typeof result?.isCorrect === "boolean" ? result.isCorrect : score >= 5,
     feedback,
-    strengths:
-      Array.isArray(result?.strengths) && result.strengths.length
-        ? result.strengths.filter((s) => typeof s === "string" && s.trim())
-        : fallback.strengths,
-    improvements:
-      Array.isArray(result?.improvements) && result.improvements.length
-        ? result.improvements.filter((s) => typeof s === "string" && s.trim())
-        : fallback.improvements,
+    strengths,
+    improvements,
   };
 };
 
@@ -220,9 +451,9 @@ const generateQuestions = async (
   count,
   userContext = "",
 ) => {
-  const model = getGeminiModel();
+  const hasAnyAIProvider = Boolean(getGeminiClient());
 
-  if (!model) {
+  if (!hasAnyAIProvider) {
     return generateFallbackQuestions(category, subcategory, difficulty, count);
   }
 
@@ -252,21 +483,20 @@ Return a JSON array with this exact structure for each question:
 
 Return ONLY the JSON array, no markdown or other text.`;
 
-    const response = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: `${categoryConfig.system}\n\n${prompt}` }],
-        },
-      ],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 4000 },
-    });
-    const content = response.response.text().trim();
+    const content = await generateWithAI(
+      `${categoryConfig.system}\n\n${prompt}`,
+      { temperature: 0.8, maxOutputTokens: 4000 },
+    );
+    if (!content) {
+      return generateFallbackQuestions(
+        category,
+        subcategory,
+        difficulty,
+        count,
+      );
+    }
     // Strip markdown code fences if present
-    const jsonStr = content
-      .replace(/^```(?:json)?\n?/, "")
-      .replace(/\n?```$/, "");
-    const questions = JSON.parse(jsonStr);
+    const questions = parseAIJsonResponse(content, "array");
     const mapped = questions.map((q) => ({
       ...q,
       category,
@@ -295,20 +525,28 @@ Return ONLY the JSON array, no markdown or other text.`;
  * Evaluate user's answer using AI
  */
 const evaluateAnswer = async (question, userAnswer, category) => {
-  const model = getGeminiModel();
+  const hasAnyAIProvider = hasGeminiApiKey();
 
   if (!userAnswer.trim()) {
     return generateFallbackEvaluation(question, userAnswer);
   }
 
-  if (!model) {
-    throw createAIUnavailableError(
-      "AI evaluation is unavailable because GOOGLE_AI_API_KEY is not configured.",
+  if (!hasAnyAIProvider) {
+    const fallback = generateFallbackEvaluation(question, userAnswer);
+    return normalizeEvaluationResult(
+      {
+        ...fallback,
+        improvements: dedupePhrases([
+          ...toCleanList(fallback.improvements),
+          "AI evaluator was unavailable, so fallback scoring was used.",
+        ]),
+      },
+      question,
+      userAnswer,
     );
   }
 
   const maxAttempts = 3;
-  let lastError;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -325,47 +563,63 @@ Evaluate and return a JSON object:
 {
   "score": <number 0-10>,
   "isCorrect": <boolean>,
-  "feedback": "Detailed constructive feedback that explicitly references this specific question/topic and what the candidate covered or missed",
-  "strengths": ["strength 1", "strength 2"],
-  "improvements": ["area for improvement 1", "area for improvement 2"]
+  "feedback": "Question-specific explanation with explicit reasons for the score",
+  "strengths": ["specific strength 1", "specific strength 2"],
+  "improvements": ["actionable improvement 1", "actionable improvement 2"],
+  "coveredConcepts": ["concept the candidate addressed"],
+  "missedConcepts": ["important concept not addressed"]
 }
 
 Return ONLY the JSON object.`;
 
-      const response = await model.generateContent({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `You are a fair and constructive interview evaluator. Feedback must be question-specific, never generic. Mention at least one concrete concept from the question, and identify what was covered vs missing in the candidate answer.\n\n${prompt}`,
-              },
-            ],
-          },
-        ],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 1000 },
-      });
+      const content = await generateWithAI(
+        `You are a fair and constructive interview evaluator. Apply a clear rubric and explain the score.
 
-      const content = response.response.text().trim();
-      const jsonStr = content
-        .replace(/^```(?:json)?\n?/, "")
-        .replace(/\n?```$/, "");
-      const parsed = JSON.parse(jsonStr);
+Rubric (0-10 total):
+- Relevance to question: 0-3
+- Technical/behavioral correctness: 0-3
+- Depth and reasoning quality: 0-2
+- Clarity and structure: 0-2
+
+Rules:
+- Feedback must mention what was covered and what was missed.
+- Do not give generic praise.
+- Every improvement must be actionable and specific to this question.
+- Keep strengths/improvements concise and concrete.
+
+${prompt}`,
+        { temperature: 0.3, maxOutputTokens: 1000 },
+      );
+      const parsed = parseAIJsonResponse(content, "object");
       return normalizeEvaluationResult(parsed, question, userAnswer);
     } catch (error) {
-      lastError = error;
       console.error(
         `AI Evaluation Error (attempt ${attempt}/${maxAttempts}):`,
         error.message,
       );
+
+      // Quota/model-availability errors are unlikely to recover within this request.
+      if (isQuotaOrRateLimitError(error) || isUnsupportedModelError(error)) {
+        break;
+      }
+
       if (attempt < maxAttempts) {
         await sleep(350 * attempt);
       }
     }
   }
 
-  throw createAIUnavailableError(
-    `AI evaluation is temporarily unavailable. Please retry. (${lastError?.message || "unknown error"})`,
+  const fallback = generateFallbackEvaluation(question, userAnswer);
+  return normalizeEvaluationResult(
+    {
+      ...fallback,
+      improvements: dedupePhrases([
+        ...toCleanList(fallback.improvements),
+        "AI response parsing failed repeatedly, so fallback scoring was used.",
+      ]),
+    },
+    question,
+    userAnswer,
   );
 };
 
@@ -373,9 +627,9 @@ Return ONLY the JSON object.`;
  * Generate overall interview feedback using AI
  */
 const generateInterviewFeedback = async (interview) => {
-  const model = getGeminiModel();
+  const hasAnyAIProvider = Boolean(getGeminiClient());
 
-  if (!model) {
+  if (!hasAnyAIProvider) {
     return generateFallbackFeedback(interview);
   }
 
@@ -406,25 +660,12 @@ Return a JSON object:
 
 Return ONLY the JSON object.`;
 
-    const response = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: `You are a career coach providing constructive interview feedback.\n\n${prompt}`,
-            },
-          ],
-        },
-      ],
-      generationConfig: { temperature: 0.5, maxOutputTokens: 1000 },
-    });
-
-    const content = response.response.text().trim();
-    const jsonStr = content
-      .replace(/^```(?:json)?\n?/, "")
-      .replace(/\n?```$/, "");
-    return JSON.parse(jsonStr);
+    const content = await generateWithAI(
+      `You are a career coach providing constructive interview feedback.\n\n${prompt}`,
+      { temperature: 0.5, maxOutputTokens: 1000 },
+    );
+    if (!content) return generateFallbackFeedback(interview);
+    return parseAIJsonResponse(content, "object");
   } catch (error) {
     console.error("AI Feedback Error:", error.message);
     return generateFallbackFeedback(interview);
