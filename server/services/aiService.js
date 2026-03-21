@@ -304,6 +304,12 @@ const dedupePhrases = (items, limit = 4) => {
   return output;
 };
 
+const toReadableConcept = (term = "") =>
+  String(term).trim().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
+
+const formatConceptList = (items = [], limit = 3) =>
+  dedupePhrases(items.map(toReadableConcept).filter(Boolean), limit);
+
 const analyzeCoverage = (question, userAnswer) => {
   const answerTokens = new Set(tokenize(userAnswer));
   const expected = extractExpectedKeywords(question);
@@ -320,10 +326,9 @@ const pickQuestionTopic = (question) => {
 };
 
 const buildQuestionSpecificFeedback = (question, userAnswer, score) => {
-  const answerTokens = new Set(tokenize(userAnswer));
-  const expected = extractExpectedKeywords(question);
-  const covered = expected.filter((k) => answerTokens.has(k));
-  const missing = expected.filter((k) => !answerTokens.has(k));
+  const { covered, missing } = analyzeCoverage(question, userAnswer);
+  const coveredReadable = formatConceptList(covered);
+  const missingReadable = formatConceptList(missing);
   const topic = pickQuestionTopic(question);
 
   let opener = "";
@@ -333,12 +338,12 @@ const buildQuestionSpecificFeedback = (question, userAnswer, score) => {
   else
     opener = `Your answer only partially addressed the question: \"${topic}\".`;
 
-  const coveredLine = covered.length
-    ? `You covered relevant points such as ${covered.slice(0, 3).join(", ")}.`
+  const coveredLine = coveredReadable.length
+    ? `You covered relevant points such as ${coveredReadable.join(", ")}.`
     : "You should focus more on the core concept asked in the question.";
 
-  const improveLine = missing.length
-    ? `To improve, include points around ${missing.slice(0, 3).join(", ")} in your response.`
+  const improveLine = missingReadable.length
+    ? `To improve, include points around ${missingReadable.join(", ")} in your response.`
     : "To improve, add a clearer structure: key point, reasoning, and one practical example.";
 
   return `${opener} ${coveredLine} ${improveLine}`;
@@ -367,6 +372,8 @@ const buildExplainableFeedback = (
 ) => {
   const topic = pickQuestionTopic(question);
   const { covered, missing } = analyzeCoverage(question, userAnswer);
+  const coveredReadable = formatConceptList(covered);
+  const missingReadable = formatConceptList(missing);
 
   const assessment =
     score >= 8
@@ -375,16 +382,16 @@ const buildExplainableFeedback = (
         ? "Reasonable answer with room to improve."
         : "The answer is partially correct and needs more depth.";
 
-  const coveredLine = covered.length
-    ? `What you covered: ${covered.slice(0, 3).join(", ")}.`
+  const coveredLine = coveredReadable.length
+    ? `What you covered: ${coveredReadable.join(", ")}.`
     : "What you covered: limited direct match to expected key concepts.";
 
-  const missingLine = missing.length
-    ? `What is missing: ${missing.slice(0, 3).join(", ")}.`
+  const missingLine = missingReadable.length
+    ? `What is missing: ${missingReadable.join(", ")}.`
     : "What is missing: add stronger structure (claim, reason, example).";
 
-  const nextStep = missing.length
-    ? `Next step: briefly explain ${missing[0]} with one concrete example.`
+  const nextStep = missingReadable.length
+    ? `Next step: briefly explain ${missingReadable[0]} with one concrete example.`
     : "Next step: tighten your answer with one concrete example and a clear conclusion.";
 
   const aiLine =
@@ -395,8 +402,20 @@ const buildExplainableFeedback = (
   return `Question focus: "${topic}". ${assessment} ${coveredLine} ${missingLine} ${nextStep}${aiLine ? ` ${aiLine}` : ""}`;
 };
 
+const cleanFeedbackText = (text = "") =>
+  String(text)
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,!?;:])/g, "$1")
+    .trim();
+
+const INTERNAL_IMPROVEMENT_NOTES = new Set([
+  "AI evaluator was unavailable, so fallback scoring was used.",
+  "AI response parsing failed repeatedly, so fallback scoring was used.",
+]);
+
 const normalizeEvaluationResult = (result, question, userAnswer) => {
   const fallback = generateFallbackEvaluation(question, userAnswer);
+  const isMCQ = question?.type === "mcq";
   const scoreValue = Number(result?.score);
   const score = Number.isFinite(scoreValue)
     ? Math.max(0, Math.min(10, Math.round(scoreValue)))
@@ -407,9 +426,14 @@ const normalizeEvaluationResult = (result, question, userAnswer) => {
       ? result.feedback.trim()
       : fallback.feedback;
 
-  if (isGenericFeedback(feedback) || !hasReasonedExplanation(feedback)) {
+  // For MCQ, keep feedback short and direct.
+  if (isMCQ) {
+    feedback = fallback.feedback;
+  } else if (isGenericFeedback(feedback) || !hasReasonedExplanation(feedback)) {
     feedback = buildExplainableFeedback(question, userAnswer, score, feedback);
   }
+
+  feedback = cleanFeedbackText(feedback);
 
   const coverage = analyzeCoverage(question, userAnswer);
 
@@ -417,7 +441,9 @@ const normalizeEvaluationResult = (result, question, userAnswer) => {
     ...toCleanList(result?.strengths),
     ...toCleanList(fallback.strengths),
     ...(coverage.covered.length
-      ? [`Covered key concepts: ${coverage.covered.slice(0, 2).join(", ")}`]
+      ? [
+          `Covered key concepts: ${formatConceptList(coverage.covered, 2).join(", ")}`,
+        ]
       : []),
   ]);
 
@@ -426,10 +452,21 @@ const normalizeEvaluationResult = (result, question, userAnswer) => {
     ...toCleanList(fallback.improvements),
     ...(coverage.missing.length
       ? [
-          `Address missing concept(s): ${coverage.missing.slice(0, 2).join(", ")}`,
+          `Address missing concept(s): ${formatConceptList(coverage.missing, 2).join(", ")}`,
         ]
       : ["Use a clearer structure: key point, reasoning, example."]),
-  ]);
+  ]).filter((item) => !INTERNAL_IMPROVEMENT_NOTES.has(item));
+
+  if (isMCQ) {
+    return {
+      score,
+      isCorrect:
+        typeof result?.isCorrect === "boolean" ? result.isCorrect : score >= 5,
+      feedback,
+      strengths: toCleanList(fallback.strengths),
+      improvements: toCleanList(fallback.improvements),
+    };
+  }
 
   return {
     score,
@@ -586,6 +623,7 @@ Rules:
 - Do not give generic praise.
 - Every improvement must be actionable and specific to this question.
 - Keep strengths/improvements concise and concrete.
+- Use plain, simple English with short sentences.
 
 ${prompt}`,
         { temperature: 0.3, maxOutputTokens: 1000 },
